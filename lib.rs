@@ -789,54 +789,65 @@ mod geode_messaging {
         ) -> Result<(), Error> {
             // check that the group actually exists
             if self.groups.contains(&to_group_id) {
-                // set up clones
-                let new_message_clone = new_message.clone();
 
-                // set up the data that will go into the new_message_id hash
+                // check that the caller is in the group
                 let from = Self::env().caller();
-                let new_timestamp = self.env().block_timestamp();
+                let groupdetails = self.group_details.get(&to_group_id).unwrap_or_default();
+                if groupdetails.group_accounts.contains(&from) {
 
-                // create the new_message_id by hashing the above data
-                let encodable = (from, to_group_id, new_message, new_timestamp); // Implements `scale::Encode`
-                let mut new_message_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
-                ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_message_id_u8);
-                let new_message_id: Hash = Hash::from(new_message_id_u8);
+                    // set up clones
+                    let new_message_clone = new_message.clone();
 
-                // SET UP THE MESSAGE DETAILS FOR THE NEW MESSAGE
-                let caller = Self::env().caller();
-                let fromusername = self.account_settings.get(&caller).unwrap_or_default().username;
-                let listname = self.group_details.get(&to_group_id).unwrap_or_default().group_name;
-                let new_details = ListMessageDetails {
-                    message_id: new_message_id,
-                    from_acct: Self::env().caller(),
-                    username: fromusername,
-                    to_list_id: to_group_id,
-                    to_list_name: listname,
-                    message: new_message_clone,
-                    file_hash: file_hash,  
-                    file_url: file_url,
-                    timestamp: self.env().block_timestamp(),
-                };
+                    // set up the data that will go into the new_message_id hash
+                    let new_timestamp = self.env().block_timestamp();
 
-                // update group_message_details: Mapping<Hash, ListMessageDetails>
-                self.group_message_details.insert(&new_message_id, &new_details);
+                    // create the new_message_id by hashing the above data
+                    let encodable = (from, to_group_id, new_message, new_timestamp); // Implements `scale::Encode`
+                    let mut new_message_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
+                    ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_message_id_u8);
+                    let new_message_id: Hash = Hash::from(new_message_id_u8);
 
-                // update sent_messages_to_group: Mapping<(AccountId, Hash), HashVector>
-                // get the messages vector for this pair of account/group
-                let caller = Self::env().caller();
-                let mut current_messages = self.sent_messages_to_group.get((&caller, &to_group_id)).unwrap_or_default();
-                // add this message to the messages vector for this account
-                current_messages.hashvector.push(new_message_id);
-                // update the sent_messages_to_group map
-                self.sent_messages_to_group.insert((&caller, &to_group_id), &current_messages);
+                    // SET UP THE MESSAGE DETAILS FOR THE NEW MESSAGE
+                    let caller = Self::env().caller();
+                    let fromusername = self.account_settings.get(&caller).unwrap_or_default().username;
+                    let listname = self.group_details.get(&to_group_id).unwrap_or_default().group_name;
+                    let new_details = ListMessageDetails {
+                        message_id: new_message_id,
+                        from_acct: Self::env().caller(),
+                        username: fromusername,
+                        to_list_id: to_group_id,
+                        to_list_name: listname,
+                        message: new_message_clone,
+                        file_hash: file_hash,  
+                        file_url: file_url,
+                        timestamp: self.env().block_timestamp(),
+                    };
 
-                // update all_messages_to_group: Mapping<Hash, HashVector>
-                // get the messages vector for this group
-                let mut current_messages = self.all_messages_to_group.get(&to_group_id).unwrap_or_default();
-                // add this message to the messages vector for this account
-                current_messages.hashvector.push(new_message_id);
-                // update the sent_messages_to_group map
-                self.all_messages_to_group.insert(&to_group_id, &current_messages);
+                    // update group_message_details: Mapping<Hash, ListMessageDetails>
+                    self.group_message_details.insert(&new_message_id, &new_details);
+
+                    // update sent_messages_to_group: Mapping<(AccountId, Hash), HashVector>
+                    // get the messages vector for this pair of account/group
+                    let caller = Self::env().caller();
+                    let mut current_messages = self.sent_messages_to_group.get((&caller, &to_group_id)).unwrap_or_default();
+                    // add this message to the messages vector for this account
+                    current_messages.hashvector.push(new_message_id);
+                    // update the sent_messages_to_group map
+                    self.sent_messages_to_group.insert((&caller, &to_group_id), &current_messages);
+
+                    // update all_messages_to_group: Mapping<Hash, HashVector>
+                    // get the messages vector for this group
+                    let mut current_messages = self.all_messages_to_group.get(&to_group_id).unwrap_or_default();
+                    // add this message to the messages vector for this account
+                    current_messages.hashvector.push(new_message_id);
+                    // update the sent_messages_to_group map
+                    self.all_messages_to_group.insert(&to_group_id, &current_messages);
+
+                }
+                else {
+                    return Err(Error::NoSuchList)
+                }
+
             }
             else {
                 return Err(Error::NoSuchList)
@@ -1207,7 +1218,42 @@ mod geode_messaging {
         }
 
 
-        // 15 🟢 Send A Message To List
+        // 15 🛑 Update Group Settings
+        #[ink(message)]
+        pub fn update_group_settings (&mut self, 
+            group_id: Hash,
+            group_name: Vec<u8>,
+            hide_from_search: bool,
+            description: Vec<u8>,
+        ) -> Result<(), Error> {
+            // set up the caller
+            let caller = Self::env().caller();
+            // get the group details
+            let mut details = self.group_details.get(&group_id).unwrap_or_default();
+            // make sure the caller is the group owner (first accoutn in the accounts vector)
+            let owner = details.group_accounts[0];
+            if caller == owner {
+                // set up updated details
+                let update = GroupDetails {
+                    group_id: group_id,
+                    group_name: group_name,
+                    hide_from_search: hide_from_search,
+                    description: description,
+                    group_accounts: details.group_accounts,
+                };
+                // update the map group_details: Mapping<Hash, GroupDetails>
+                self.group_details.insert(&group_id, &update);
+
+                Ok(())
+            }
+            else {
+                return Err(Error::NonexistentGroup);
+            }
+        }
+
+
+
+        // 16 🟢 Send A Message To List
         #[ink(message)]
         pub fn send_message_to_list (&mut self, 
             to_list_id: Hash,
@@ -1267,7 +1313,7 @@ mod geode_messaging {
         }
 
 
-        // 16 🟢 Make A New List (public or private)
+        // 17 🟢 Make A New List (public or private)
         #[ink(message)]
         pub fn make_a_new_list (&mut self, 
             new_list_name: Vec<u8>,
@@ -1323,7 +1369,7 @@ mod geode_messaging {
         }
 
 
-        // 17 🟢 Delete A Single List Message
+        // 18 🟢 Delete A Single List Message
         #[ink(message)]
         pub fn delete_single_message_to_list (&mut self, message_id_to_delete: Hash) -> Result<(), Error> {
             // does this message exist? and are you the sender? if so, proceed
@@ -1351,7 +1397,7 @@ mod geode_messaging {
         }
 
 
-        // 18 🟢 Delete An Open List (and all of its messages and subscribers)
+        // 19 🟢 Delete An Open List (and all of its messages and subscribers)
         #[ink(message)]
         pub fn delete_an_open_list (&mut self, 
             delete_list_id: Hash
@@ -1409,7 +1455,7 @@ mod geode_messaging {
         }
 
 
-        // 19 🟢 Join An Open List
+        // 20 🟢 Join An Open List
         #[ink(message)]
         pub fn join_an_open_list (&mut self, list_id: Hash) -> Result<(), Error> {
             // does this list exist in open_lists: Vec<Hash>? if so, proceed
@@ -1442,7 +1488,7 @@ mod geode_messaging {
         }
 
 
-        // 20 🟢 Unsubscribe From An Open List
+        // 21 🟢 Unsubscribe From An Open List
         #[ink(message)]
         pub fn unsubscribe_from_open_list (&mut self, 
             list_id: Hash
@@ -1486,7 +1532,7 @@ mod geode_messaging {
         }
 
 
-        // 21 🟢 Send A Message To Paid List
+        // 22 🟢 Send A Message To Paid List
         #[ink(message, payable)]
         #[openbrush::modifiers(non_reentrant)]
         pub fn send_message_to_paid_list (&mut self, 
@@ -1587,7 +1633,7 @@ mod geode_messaging {
         }
 
 
-        // 22 🟢 Make A Paid List
+        // 23 🟢 Make A Paid List
         #[ink(message)]
         pub fn make_a_new_paid_list (&mut self, 
             new_list_name: Vec<u8>,
@@ -1644,7 +1690,7 @@ mod geode_messaging {
         }
 
 
-        // 23 🟢 Delete Paid List (and ALL of its messages ever sent)
+        // 24 🟢 Delete Paid List (and ALL of its messages ever sent)
         #[ink(message)]
         pub fn delete_paid_list (&mut self, delete_this_list: Hash) -> Result<(), Error> {
             // do you own this paid list? if so, proceed
@@ -1693,7 +1739,7 @@ mod geode_messaging {
         }
  
 
-        // 24 🟢 Block A Paid List
+        // 25 🟢 Block A Paid List
         #[ink(message)]
         pub fn block_paid_list (&mut self, list_id_to_block: Hash) -> Result<(), Error> {
             // Is this list already being blocked? If TRUE, send ERROR
@@ -1714,7 +1760,7 @@ mod geode_messaging {
         }
 
 
-        // 25 🟢 Unblock A Paid List
+        // 26 🟢 Unblock A Paid List
         #[ink(message)]
         pub fn unblock_paid_list (&mut self, list_id_to_unblock: Hash) -> Result<(), Error> {
             // Is this account currently being blocked? If TRUE, proceed...
@@ -1740,7 +1786,7 @@ mod geode_messaging {
         // >>>>>>>>>>>>>>>>>>>>>>>>>> PRIMARY GET MESSAGES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
  
-        // 26 🟢 Get My Inbox
+        // 27 🟢 Get My Inbox
         #[ink(message)]
         pub fn get_my_inbox(&mut self) -> MyInbox {
             let caller = Self::env().caller();
@@ -1862,7 +1908,7 @@ mod geode_messaging {
         }
 
 
-        // 27 🟢 Get My Paid Inbox
+        // 28 🟢 Get My Paid Inbox
         #[ink(message)]
         pub fn get_my_paid_inbox(&mut self) -> MyPaidInbox {
             let caller = Self::env().caller();
@@ -1915,7 +1961,7 @@ mod geode_messaging {
         }
 
 
-        // 28 🟢 Get My Allowed And Blocked Accounts
+        // 29 🟢 Get My Allowed And Blocked Accounts
         #[ink(message)]
         pub fn get_my_allowed_and_blocked_accounts(&self) -> AccountsAllowedAndBlocked {
             let caller = Self::env().caller();
@@ -1932,7 +1978,7 @@ mod geode_messaging {
         }
 
 
-        // 29 🟢 Get My Groups
+        // 30 🟢 Get My Groups
         #[ink(message)]
         pub fn get_my_groups(&self) -> Vec<GroupDetails> {
             let caller = Self::env().caller();
@@ -1950,7 +1996,7 @@ mod geode_messaging {
         }
 
 
-        // 30 🟢 Search Inbox By Keyword
+        // 31 🟢 Search Inbox By Keyword
         #[ink(message)]
         pub fn search_inbox_by_keyword(&self, keywords: Vec<u8>) -> InboxSearchResults {
             let caller = Self::env().caller();
@@ -2060,7 +2106,7 @@ mod geode_messaging {
         }
 
         
-        // 31 🟢 Search Inbox By Account
+        // 32 🟢 Search Inbox By Account
         #[ink(message)]
         pub fn search_inbox_by_account(&self, find_account: AccountId) -> InboxAcctSearchResults {
             let caller = Self::env().caller();
@@ -2136,7 +2182,7 @@ mod geode_messaging {
         }
 
 
-        // 32 🟢 Find Groups By Keyword
+        // 33 🟢 Find Groups By Keyword
         #[ink(message)]
         pub fn find_groups_by_keyword(&self, keywords: Vec<u8>) -> GroupSearchResults {
             // set up results structures
@@ -2171,7 +2217,7 @@ mod geode_messaging {
         }
 
 
-        // 33 🟢 Get My Open Lists
+        // 34 🟢 Get My Open Lists
         #[ink(message)]
         pub fn get_my_open_lists(&self) -> Vec<OpenListDetails> {
             let caller = Self::env().caller();
@@ -2190,7 +2236,7 @@ mod geode_messaging {
         }
 
 
-        // 34 🟢 Get My Paid Lists
+        // 35 🟢 Get My Paid Lists
         #[ink(message)]
         pub fn get_my_paid_lists(&self) -> Vec<PaidListDetails> {
             let caller = Self::env().caller();
@@ -2209,7 +2255,7 @@ mod geode_messaging {
         }
 
 
-        // 35 🟢 Get My Subscribed Lists
+        // 36 🟢 Get My Subscribed Lists
         #[ink(message)]
         pub fn get_my_subscribed_lists(&self) -> Vec<OpenListDetails> {
             let caller = Self::env().caller();
@@ -2228,7 +2274,7 @@ mod geode_messaging {
         }
 
 
-        // 36 🟢 Find Lists By Keyword
+        // 37 🟢 Find Lists By Keyword
         #[ink(message)]
         pub fn find_lists_by_keyword(&self, keywords: Vec<u8>) -> ListSearchResults {
             // set up results structures
@@ -2263,7 +2309,7 @@ mod geode_messaging {
         }
 
 
-        // 37 🟢 Find Accounts By Keyword
+        // 38 🟢 Find Accounts By Keyword
         // Useful for making paid lists. Returns all settings details.
         // Front end might allow the user to select a set of accounts, tell them the 
         // total fee (currently) and let them copy a comma separated list of the account IDs
@@ -2301,7 +2347,7 @@ mod geode_messaging {
         }
   
   
-        // 38 🟢 Get Settings Data For Analysis
+        // 39 🟢 Get Settings Data For Analysis
         // returns all of the settings data for analysis, fully anonymized,
         // but only for accounts who are not hidden from search
         #[ink(message)]
