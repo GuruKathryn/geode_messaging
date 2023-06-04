@@ -42,8 +42,6 @@ mod geode_messaging {
         username: Vec<u8>,
         interests: Vec<u8>,
         inbox_fee: Balance,
-        last_inbox_access: u64,
-        last_paid_access: u64,
         hide_from_search: bool,
         last_update: u64,
     }
@@ -55,8 +53,6 @@ mod geode_messaging {
                 username: <Vec<u8>>::default(),
                 interests: <Vec<u8>>::default(),
                 inbox_fee: Balance::default(),
-                last_inbox_access: u64::default(),
-                last_paid_access: u64::default(),
                 hide_from_search: false,
                 last_update: u64::default(),
             }
@@ -72,8 +68,6 @@ mod geode_messaging {
     pub struct SettingsData {
         interests: Vec<Vec<u8>>,
         inbox_fee: Vec<Balance>,
-        last_inbox_access: Vec<u64>,
-        last_paid_access: Vec<u64>,
         last_update: Vec<u64>,
     }
 
@@ -82,8 +76,6 @@ mod geode_messaging {
             SettingsData {
                 interests: <Vec<Vec<u8>>>::default(),
                 inbox_fee: <Vec<Balance>>::default(),
-                last_inbox_access: <Vec<u64>>::default(),
-                last_paid_access: <Vec<u64>>::default(),
                 last_update: <Vec<u64>>::default(),
             }
         }
@@ -653,8 +645,6 @@ mod geode_messaging {
                 username: my_username,
                 interests: my_interests,
                 inbox_fee: my_inbox_fee,
-                last_inbox_access: current_settings.last_inbox_access,
-                last_paid_access: current_settings.last_paid_access,
                 hide_from_search: hide_from_search,
                 last_update: self.env().block_timestamp()
             };
@@ -1788,7 +1778,7 @@ mod geode_messaging {
  
         // 27 🟢 Get My Inbox
         #[ink(message)]
-        pub fn get_my_inbox(&mut self) -> MyInbox {
+        pub fn get_my_inbox(&self) -> MyInbox {
             let caller = Self::env().caller();
 
             // set up return structures
@@ -1879,22 +1869,6 @@ mod geode_messaging {
                 listsvector.push(messages_from_list);
             }
 
-            // get the current timestamp
-            let rightnow = self.env().block_timestamp();
-            // get the caller's settings and update the last_inbox_access
-            let current_settings = self.account_settings.get(&caller).unwrap_or_default();
-            let update = Settings {
-                user_account: current_settings.user_account,
-                username: current_settings.username,
-                interests: current_settings.interests,
-                inbox_fee: current_settings.inbox_fee,
-                last_inbox_access: rightnow,
-                last_paid_access: current_settings.last_paid_access,
-                hide_from_search: current_settings.hide_from_search,
-                last_update: current_settings.last_update,
-            };
-            self.account_settings.insert(&caller, &update);
-
             // package the inbox results
             let my_inbox = MyInbox {
                 blocked_accts: myblocked,
@@ -1910,7 +1884,7 @@ mod geode_messaging {
 
         // 28 🟢 Get My Paid Inbox
         #[ink(message)]
-        pub fn get_my_paid_inbox(&mut self) -> MyPaidInbox {
+        pub fn get_my_paid_inbox(&self) -> MyPaidInbox {
             let caller = Self::env().caller();
             // get the caller's account_blocked_lists: Mapping<AccountID, HashVector>
             let blocked = self.account_blocked_lists.get(&caller).unwrap_or_default().hashvector;
@@ -1933,22 +1907,6 @@ mod geode_messaging {
                 }
                 // loop through the rest of the lists
             }
-
-            // get the current timestamp
-            let rightnow = self.env().block_timestamp();
-            // get the caller's settings and update the last_paid_access
-            let current_settings = self.account_settings.get(&caller).unwrap_or_default();
-            let update = Settings {
-                user_account: current_settings.user_account,
-                username: current_settings.username,
-                interests: current_settings.interests,
-                inbox_fee: current_settings.inbox_fee,
-                last_inbox_access: current_settings.last_inbox_access,
-                last_paid_access: rightnow,
-                hide_from_search: current_settings.hide_from_search,
-                last_update: current_settings.last_update,
-            };
-            self.account_settings.insert(&caller, &update);
 
             // package the inbox results
             let my_paid_inbox = MyPaidInbox {
@@ -2355,8 +2313,6 @@ mod geode_messaging {
             // set up results structures 
             let mut interests_data: Vec<Vec<u8>> = Vec::new();
             let mut fee_data: Vec<Balance> = Vec::new();
-            let mut inbox_access_data: Vec<u64> = Vec::new();
-            let mut paid_inbox_data: Vec<u64> = Vec::new();
             let mut settings_update_data: Vec<u64> = Vec::new();
 
             // iterate on all_accounts_with_settings: Vec<AccountId>
@@ -2368,8 +2324,6 @@ mod geode_messaging {
                     // add the anonymous parts to the results vectors
                     interests_data.push(settings.interests);
                     fee_data.push(settings.inbox_fee);
-                    inbox_access_data.push(settings.last_inbox_access);
-                    paid_inbox_data.push(settings.last_paid_access);
                     settings_update_data.push(settings.last_update);
                 }
             }
@@ -2377,8 +2331,6 @@ mod geode_messaging {
             let results = SettingsData {
                 interests: interests_data,
                 inbox_fee: fee_data,
-                last_inbox_access: inbox_access_data,
-                last_paid_access: paid_inbox_data,
                 last_update:settings_update_data,
             };
             // return the results
