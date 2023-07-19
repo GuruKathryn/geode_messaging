@@ -92,8 +92,7 @@ mod geode_messaging {
         from_acct: AccountId,
         from_username: Vec<u8>,
         to_acct: AccountId,
-        message: Vec<u8>,
-        file_hash: Hash, 
+        message: Vec<u8>, 
         file_url: Vec<u8>,
         timestamp: u64,
     }
@@ -106,7 +105,6 @@ mod geode_messaging {
                 from_username: <Vec<u8>>::default(),
                 to_acct: ZERO_ADDRESS.into(),
                 message: <Vec<u8>>::default(),
-                file_hash: Hash::default(), 
                 file_url: <Vec<u8>>::default(),
                 timestamp: u64::default(),
             }
@@ -126,7 +124,6 @@ mod geode_messaging {
         to_list_id: Hash,
         to_list_name: Vec<u8>,
         message: Vec<u8>,
-        file_hash: Hash, 
         file_url: Vec<u8>,
         timestamp: u64,
     }
@@ -139,8 +136,7 @@ mod geode_messaging {
                 username: <Vec<u8>>::default(),
                 to_list_id: Hash::default(),
                 to_list_name: <Vec<u8>>::default(),
-                message: <Vec<u8>>::default(),
-                file_hash: Hash::default(), 
+                message: <Vec<u8>>::default(), 
                 file_url: <Vec<u8>>::default(),
                 timestamp: u64::default(),
             }
@@ -713,8 +709,7 @@ mod geode_messaging {
         #[ink(message)]
         pub fn send_private_message (&mut self, 
             to_acct: AccountId,
-            new_message: Vec<u8>,
-            file_hash: Hash, 
+            new_message: Vec<u8>, 
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
             // get the list of allowed accounts for to_acct
@@ -741,8 +736,7 @@ mod geode_messaging {
                     from_acct: Self::env().caller(),
                     from_username: fromusername,
                     to_acct: to_acct,
-                    message: new_message_clone,
-                    file_hash: file_hash, 
+                    message: new_message_clone, 
                     file_url: file_url,
                     timestamp: self.env().block_timestamp(),
                 };
@@ -773,8 +767,7 @@ mod geode_messaging {
         #[ink(message)]
         pub fn send_message_to_group (&mut self, 
             to_group_id: Hash,
-            new_message: Vec<u8>,
-            file_hash: Hash, 
+            new_message: Vec<u8>, 
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
             // check that the group actually exists
@@ -808,7 +801,6 @@ mod geode_messaging {
                         to_list_id: to_group_id,
                         to_list_name: listname,
                         message: new_message_clone,
-                        file_hash: file_hash,  
                         file_url: file_url,
                         timestamp: self.env().block_timestamp(),
                     };
@@ -989,7 +981,6 @@ mod geode_messaging {
             hide_from_search: bool,
             description: Vec<u8>,
             first_message: Vec<u8>,
-            file_hash: Hash,  
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
             // set up any clones needed
@@ -1050,8 +1041,7 @@ mod geode_messaging {
                     username: fromusername,
                     to_list_id: new_group_id,
                     to_list_name: new_group_name_clone2,
-                    message: first_message_clone,
-                    file_hash: file_hash,  
+                    message: first_message_clone,  
                     file_url: file_url,
                     timestamp: self.env().block_timestamp(),
                 };
@@ -1208,7 +1198,7 @@ mod geode_messaging {
         }
 
 
-        // 15 🛑 Update Group Settings
+        // 15 🟢 Update Group Settings
         #[ink(message)]
         pub fn update_group_settings (&mut self, 
             group_id: Hash,
@@ -1247,8 +1237,7 @@ mod geode_messaging {
         #[ink(message)]
         pub fn send_message_to_list (&mut self, 
             to_list_id: Hash,
-            new_message: Vec<u8>,
-            file_hash: Hash, 
+            new_message: Vec<u8>, 
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
             // Does this list exist? and do you own it? If so, proceed
@@ -1275,8 +1264,7 @@ mod geode_messaging {
                     username: fromusername,
                     to_list_id: to_list_id,
                     to_list_name: listname,
-                    message: new_message_clone,
-                    file_hash: file_hash,  
+                    message: new_message_clone,  
                     file_url: file_url,
                     timestamp: self.env().block_timestamp(),
                 };
@@ -1528,7 +1516,6 @@ mod geode_messaging {
         pub fn send_message_to_paid_list (&mut self, 
             to_list_id: Hash,
             new_message: Vec<u8>,
-            file_hash: Hash, 
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
             // Does this list exist? and do you own it? If so, proceed
@@ -1571,8 +1558,7 @@ mod geode_messaging {
                         username: fromusername,
                         to_list_id: to_list_id,
                         to_list_name: listname,
-                        message: new_message_clone,
-                        file_hash: file_hash,  
+                        message: new_message_clone,  
                         file_url: file_url,
                         timestamp: self.env().block_timestamp(),
                     };
