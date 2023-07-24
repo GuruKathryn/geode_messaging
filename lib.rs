@@ -1449,6 +1449,7 @@ mod geode_messaging {
                 else {
                     // add the list to the caller's account_subscribed_lists: Mapping<AccountID, HashVector>
                     lists.hashvector.push(list_id);
+                    self.account_subscribed_lists.insert(&caller, &lists);
                     // add the caller to the list_accounts in open_list_details: Mapping<Hash, OpenListDetails>
                     let mut details = self.open_list_details.get(&list_id).unwrap_or_default();
                     details.list_accounts.push(caller);
