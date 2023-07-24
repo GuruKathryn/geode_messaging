@@ -211,6 +211,28 @@ mod geode_messaging {
             scale_info::TypeInfo, Debug, PartialEq, Eq
         )
     )]
+    pub struct GroupPublicDetails {
+        group_id: Hash,
+        group_name: Vec<u8>,
+        description: Vec<u8>,
+    }
+
+    impl Default for GroupPublicDetails {
+        fn default() -> GroupPublicDetails {
+            GroupPublicDetails {
+                group_id: Hash::default(),
+                group_name: <Vec<u8>>::default(),
+                description: <Vec<u8>>::default(),
+            }
+        }
+    }
+
+    #[derive(Clone, scale::Decode, scale::Encode)]
+    #[cfg_attr(feature = "std",
+        derive(ink::storage::traits::StorageLayout, 
+            scale_info::TypeInfo, Debug, PartialEq, Eq
+        )
+    )]
     pub struct OpenListDetails {
         list_id: Hash,
         owner: AccountId,
@@ -229,6 +251,30 @@ mod geode_messaging {
                 hide_from_search: false,
                 description: <Vec<u8>>::default(),
                 list_accounts: <Vec<AccountId>>::default(),
+            }
+        }
+    }
+
+    #[derive(Clone, scale::Decode, scale::Encode)]
+    #[cfg_attr(feature = "std",
+        derive(ink::storage::traits::StorageLayout, 
+            scale_info::TypeInfo, Debug, PartialEq, Eq
+        )
+    )]
+    pub struct OpenListPublicDetails {
+        list_id: Hash,
+        owner: AccountId,
+        list_name: Vec<u8>,
+        description: Vec<u8>,
+    }
+
+    impl Default for OpenListPublicDetails {
+        fn default() -> OpenListPublicDetails {
+            OpenListPublicDetails {
+                list_id: Hash::default(),
+                owner: ZERO_ADDRESS.into(),
+                list_name: <Vec<u8>>::default(),
+                description: <Vec<u8>>::default(),
             }
         }
     }
@@ -387,14 +433,14 @@ mod geode_messaging {
     )]
     pub struct GroupSearchResults {
         search: Vec<u8>,
-        groups: Vec<GroupDetails>,
+        groups: Vec<GroupPublicDetails>,
     }
 
     impl Default for GroupSearchResults {
         fn default() -> GroupSearchResults {
             GroupSearchResults {
                 search: <Vec<u8>>::default(),
-                groups: <Vec<GroupDetails>>::default(),
+                groups: <Vec<GroupPublicDetails>>::default(),
             }
         }
     }
@@ -407,14 +453,14 @@ mod geode_messaging {
     )]
     pub struct ListSearchResults {
         search: Vec<u8>,
-        lists: Vec<OpenListDetails>,
+        lists: Vec<OpenListPublicDetails>,
     }
 
     impl Default for ListSearchResults {
         fn default() -> ListSearchResults {
             ListSearchResults {
                 search: <Vec<u8>>::default(),
-                lists: <Vec<OpenListDetails>>::default(),
+                lists: <Vec<OpenListPublicDetails>>::default(),
             }
         }
     }
@@ -2131,7 +2177,7 @@ mod geode_messaging {
         #[ink(message)]
         pub fn find_groups_by_keyword(&self, keywords: Vec<u8>) -> GroupSearchResults {
             // set up results structures
-            let mut resultsvector: Vec<GroupDetails> = Vec::new();
+            let mut resultsvector: Vec<GroupPublicDetails> = Vec::new();
             // set up target string
             let targetvecu8 = keywords.clone();
             let target_string = String::from_utf8(targetvecu8).unwrap_or_default();
@@ -2147,8 +2193,14 @@ mod geode_messaging {
                     let description_string = String::from_utf8(details.description.clone()).unwrap_or_default();
                     // if the target_string is in the group description or name
                     if name_string.contains(&target_string) || description_string.contains(&target_string) {
+                        // create the public details
+                        let public_details = GroupPublicDetails {
+                            group_id: details.group_id,
+                            group_name: details.group_name.clone(),
+                            description: details.description.clone(),
+                        };
                         // add it to the results vector
-                        resultsvector.push(details);
+                        resultsvector.push(public_details);
                     }
                 }
             }
@@ -2223,7 +2275,7 @@ mod geode_messaging {
         #[ink(message)]
         pub fn find_lists_by_keyword(&self, keywords: Vec<u8>) -> ListSearchResults {
             // set up results structures
-            let mut resultsvector: Vec<OpenListDetails> = Vec::new();
+            let mut resultsvector: Vec<OpenListPublicDetails> = Vec::new();
             // set up target string
             let targetvecu8 = keywords.clone();
             let target_string = String::from_utf8(targetvecu8).unwrap_or_default();
@@ -2239,8 +2291,15 @@ mod geode_messaging {
                     let description_string = String::from_utf8(details.description.clone()).unwrap_or_default();
                     // if the target_string is in the list description or name
                     if name_string.contains(&target_string) || description_string.contains(&target_string) {
+                        // create the public details
+                        let public_details = OpenListPublicDetails {
+                            list_id: details.list_id,
+                            owner: details.owner,
+                            list_name: details.list_name.clone(),
+                            description: details.description.clone(),
+                        };
                         // add it to the results vector
-                        resultsvector.push(details);
+                        resultsvector.push(public_details);
                     }
                 }
             }
