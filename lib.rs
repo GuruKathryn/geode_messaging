@@ -2254,17 +2254,24 @@ mod geode_messaging {
 
         // 36 🟢 Get My Subscribed Lists
         #[ink(message)]
-        pub fn get_my_subscribed_lists(&self) -> Vec<OpenListDetails> {
+        pub fn get_my_subscribed_lists(&self) -> Vec<OpenListPublicDetails> {
             let caller = Self::env().caller();
             // set up the results vector
-            let mut resultsvector: Vec<OpenListDetails> = Vec::new();
+            let mut resultsvector: Vec<OpenListPublicDetails> = Vec::new();
             // get the caller's account_subscribed_lists: Mapping<AccountID, HashVector>
             let mylists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
             // for each list ID, get the details from open_list_details: Mapping<Hash, OpenListDetails>
             for listid in mylists.hashvector {
                 let details = self.open_list_details.get(&listid).unwrap_or_default();
+                // package the public details
+                let public_details = OpenListPublicDetails {
+                    list_id: details.list_id,
+                    owner: details.owner,
+                    list_name: details.list_name.clone(),
+                    description: details.description.clone(),
+                };
                 // add the details to the results vector
-                resultsvector.push(details);
+                resultsvector.push(public_details);
             }
             // return the results
             resultsvector
