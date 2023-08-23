@@ -1255,7 +1255,7 @@ mod geode_messaging {
             // set up the caller
             let caller = Self::env().caller();
             // get the group details
-            let mut details = self.group_details.get(&group_id).unwrap_or_default();
+            let details = self.group_details.get(&group_id).unwrap_or_default();
             // make sure the caller is the group owner (first accoutn in the accounts vector)
             let owner = details.group_accounts[0];
             if caller == owner {
@@ -1622,12 +1622,12 @@ mod geode_messaging {
                     self.sent_messages_to_paid_list.insert(&to_list_id, &current_messages);
 
                     // PAY EACH ACCOUNT ON THE PAID LIST 
-                    for inbox in listaccounts {
+                    for inbox in &listaccounts {
                         // get their inbox fee from account_settings: Mapping<AccountID, Settings>
                         let fee: Balance = self.account_settings.get(&inbox).unwrap_or_default().inbox_fee;
                         // send them their inbox_fee
-                        self.env().transfer(inbox, fee).expect("payout failed");
-                        if self.env().transfer(inbox, fee).is_err() {
+                        self.env().transfer(*inbox, fee).expect("payout failed");
+                        if self.env().transfer(*inbox, fee).is_err() {
                             return Err(Error::PayoutFailed);
                         }
                     }
