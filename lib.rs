@@ -1131,10 +1131,16 @@ mod geode_messaging {
                     return Err(Error::AlreadySubscribed);
                 }
                 else {
-                    // push this group id onto the hashvector
+                    // push this group id onto the account subscribed groups hashvector
                     current_groups.hashvector.push(group_id);
                     // update account_subscribed_groups: Mapping<AccountID, HashVector>
                     self.account_subscribed_groups.insert(&caller, &current_groups);
+                    // Get the group details
+                    let mut new_group_details = self.group_details.get(&group_id).unwrap_or_default();
+                    // add this caller to the accounts vector
+                    new_group_details.group_accounts.push(caller);
+                    // update the group details mapping
+                    self.group_details.insert(&group_id, &new_group_details);
                 }
                 Ok(())
             }
@@ -1565,15 +1571,17 @@ mod geode_messaging {
             new_message: Vec<u8>,
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
+
+            // COLLECT PAYMENT FROM THE CALLER
+            // the 'payable' tag on this message allows the user to send any amount
+            let staked: Balance = self.env().transferred_value();
+            
             // Does this list exist? and do you own it? If so, proceed
             let caller = Self::env().caller();
-            let owned_lists = self.account_owned_paid_lists.get(&caller).unwrap_or_default();
-            if owned_lists.hashvector.contains(&to_list_id) {
+            let owned_lists = self.account_owned_paid_lists.get(&caller).unwrap_or_default().hashvector;
+            if owned_lists.contains(&to_list_id) {
                 
-                // COLLECT PAYMENT FROM THE CALLER
-                // the 'payable' tag on this message allows the user to send any amount
-                let staked: Balance = self.env().transferred_value();
-                // total the fees required to send to this list                
+                // total the fees required to send to this list              
                 // get the list_accounts from paid_list_details: Mapping<Hash, PaidListDetails>
                 let listaccounts = self.paid_list_details.get(&to_list_id).unwrap_or_default().list_accounts;
                 let mut total_fee: Balance = 0;
@@ -1584,8 +1592,10 @@ mod geode_messaging {
                     // add it to the total_fee
                     total_fee += fee;
                 }
+
                 // if staked is more than total_fee, proceed
                 if staked > total_fee {
+
                     // set up clones
                     let new_message_clone = new_message.clone();
                     // set up the data that will go into the new_message_id hash
@@ -1626,7 +1636,7 @@ mod geode_messaging {
                         // get their inbox fee from account_settings: Mapping<AccountID, Settings>
                         let fee: Balance = self.account_settings.get(&inbox).unwrap_or_default().inbox_fee;
                         // send them their inbox_fee
-                        self.env().transfer(*inbox, fee).expect("payout failed");
+                        //self.env().transfer(*inbox, fee).expect("payout failed");
                         if self.env().transfer(*inbox, fee).is_err() {
                             return Err(Error::PayoutFailed);
                         }
@@ -1634,7 +1644,7 @@ mod geode_messaging {
                     // then pay the caller what is left from their stake after paying the list
                     let leftovers: Balance = staked - total_fee;
                     if leftovers > 0 {
-                        self.env().transfer(caller, leftovers).expect("payout failed");
+                        //self.env().transfer(caller, leftovers).expect("payout failed");
                         if self.env().transfer(caller, leftovers).is_err() {
                             return Err(Error::PayoutFailed);
                         }
@@ -1646,13 +1656,11 @@ mod geode_messaging {
                 else {
                     return Err(Error::InsufficientStake);
                 }
-
             }
             // if the list does not exist, or you do not own it, send an error
             else {
                 return Err(Error::NonexistentList);
             }
-
         }
 
 
