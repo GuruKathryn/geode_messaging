@@ -87,6 +87,38 @@ mod geode_messaging {
             scale_info::TypeInfo, Debug, PartialEq, Eq
         )
     )]
+    pub struct CallerSettingsData {
+        caller_interests: Vec<u8>,
+        caller_inbox_fee: Balance,
+        caller_last_update: u64,
+        caller_hide: bool,
+        caller_username: Vec<u8>,
+        interests: Vec<Vec<u8>>,
+        inbox_fee: Vec<Balance>,
+        last_update: Vec<u64>,
+    }
+
+    impl Default for CallerSettingsData {
+        fn default() -> CallerSettingsData {
+            CallerSettingsData {
+                caller_interests: <Vec<u8>>::default(),
+                caller_inbox_fee: Balance::default(),
+                caller_last_update: u64::default(),
+                caller_hide: false,
+                caller_username: <Vec<u8>>::default(),
+                interests: <Vec<Vec<u8>>>::default(),
+                inbox_fee: <Vec<Balance>>::default(),
+                last_update: <Vec<u64>>::default(),
+            }
+        }
+    }
+
+    #[derive(Clone, scale::Decode, scale::Encode)]
+    #[cfg_attr(feature = "std",
+        derive(ink::storage::traits::StorageLayout, 
+            scale_info::TypeInfo, Debug, PartialEq, Eq
+        )
+    )]
     pub struct MessageDetails {
         message_id: Hash,
         from_acct: AccountId,
@@ -2390,6 +2422,56 @@ mod geode_messaging {
             }
             // package the results
             let results = SettingsData {
+                interests: interests_data,
+                inbox_fee: fee_data,
+                last_update:settings_update_data,
+            };
+            // return the results
+            results
+        }
+
+
+        // 40 🛑 Get Settings Data For Individual Caller
+        // returns all of the settings data for analysis, fully anonymized,
+        // but only for accounts who are not hidden from search
+        // and returns the settings data for the particular caller
+        #[ink(message)]
+        pub fn get_settings_data_caller(&self) -> CallerSettingsData {
+            let caller = Self::env().caller();
+
+            // set up results structures 
+            let mut interests_data: Vec<Vec<u8>> = Vec::new();
+            let mut fee_data: Vec<Balance> = Vec::new();
+            let mut settings_update_data: Vec<u64> = Vec::new();
+
+            // iterate on all_accounts_with_settings: Vec<AccountId>
+            for acct in &self.all_accounts_with_settings {
+                // get their settings in account_settings: Mapping<AccountID, Settings>
+                let settings = self.account_settings.get(&acct).unwrap_or_default();
+                // if they are not hidden from search...
+                if settings.hide_from_search == false {
+                    // add the anonymous parts to the results vectors
+                    interests_data.push(settings.interests);
+                    fee_data.push(settings.inbox_fee);
+                    settings_update_data.push(settings.last_update);
+                }
+            }
+
+            // get the specific caller's settings
+            let caller_settings = self.account_settings.get(&caller).unwrap_or_default();
+            let caller_interests_data = caller_settings.interests;
+            let caller_inbox_fee_data = caller_settings.inbox_fee;
+            let caller_last_update_data = caller_settings.last_update;
+            let caller_hide_data = caller_settings.hide_from_search;
+            let caller_username_data = caller_settings.username;
+
+            // package the results
+            let results = CallerSettingsData {
+                caller_interests: caller_interests_data,
+                caller_inbox_fee: caller_inbox_fee_data,
+                caller_last_update: caller_last_update_data,
+                caller_hide: caller_hide_data,
+                caller_username: caller_username_data,
                 interests: interests_data,
                 inbox_fee: fee_data,
                 last_update:settings_update_data,
