@@ -8,7 +8,7 @@ This contract allows users to privately message each other the Geode Blockchain.
 - maximum user control! 
 */ 
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(feature = "std"), no_std, no_main)]
 
 #[ink::contract]
 mod geode_messaging {
@@ -17,26 +17,14 @@ mod geode_messaging {
     use ink::prelude::vec;
     use ink::prelude::string::String;
     use ink::storage::Mapping;
+    use ink::storage::StorageVec;
     use ink::env::hash::{Sha2x256, HashOutput};
-    use openbrush::{
-        contracts::{
-            reentrancy_guard::*,
-            traits::errors::ReentrancyGuardError,
-        },
-        traits::{
-            Storage,
-            ZERO_ADDRESS
-        },
-    };
 
     // PRELIMINARY STORAGE STRUCTURES >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct Settings {
         user_account: AccountId,
         username: Vec<u8>,
@@ -49,7 +37,7 @@ mod geode_messaging {
     impl Default for Settings {
         fn default() -> Settings {
             Settings {
-                user_account: ZERO_ADDRESS.into(),
+                user_account: AccountId::from([0x0; 32]),
                 username: <Vec<u8>>::default(),
                 interests: <Vec<u8>>::default(),
                 inbox_fee: Balance::default(),
@@ -59,66 +47,18 @@ mod geode_messaging {
         }
     }
 
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq, Default)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct SettingsData {
         interests: Vec<Vec<u8>>,
         inbox_fee: Vec<Balance>,
         last_update: Vec<u64>,
     }
 
-    impl Default for SettingsData {
-        fn default() -> SettingsData {
-            SettingsData {
-                interests: <Vec<Vec<u8>>>::default(),
-                inbox_fee: <Vec<Balance>>::default(),
-                last_update: <Vec<u64>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
-    pub struct CallerSettingsData {
-        caller_interests: Vec<u8>,
-        caller_inbox_fee: Balance,
-        caller_last_update: u64,
-        caller_hide: bool,
-        caller_username: Vec<u8>,
-        interests: Vec<Vec<u8>>,
-        inbox_fee: Vec<Balance>,
-        last_update: Vec<u64>,
-    }
-
-    impl Default for CallerSettingsData {
-        fn default() -> CallerSettingsData {
-            CallerSettingsData {
-                caller_interests: <Vec<u8>>::default(),
-                caller_inbox_fee: Balance::default(),
-                caller_last_update: u64::default(),
-                caller_hide: false,
-                caller_username: <Vec<u8>>::default(),
-                interests: <Vec<Vec<u8>>>::default(),
-                inbox_fee: <Vec<Balance>>::default(),
-                last_update: <Vec<u64>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct MessageDetails {
         message_id: Hash,
         from_acct: AccountId,
@@ -133,9 +73,9 @@ mod geode_messaging {
         fn default() -> MessageDetails {
             MessageDetails {
                 message_id: Hash::default(),
-                from_acct: ZERO_ADDRESS.into(),
+                from_acct: AccountId::from([0x0; 32]),
                 from_username: <Vec<u8>>::default(),
-                to_acct: ZERO_ADDRESS.into(),
+                to_acct: AccountId::from([0x0; 32]),
                 message: <Vec<u8>>::default(),
                 file_url: <Vec<u8>>::default(),
                 timestamp: u64::default(),
@@ -143,12 +83,9 @@ mod geode_messaging {
         }
     }
 
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct ListMessageDetails {
         message_id: Hash,
         from_acct: AccountId,
@@ -164,7 +101,7 @@ mod geode_messaging {
         fn default() -> ListMessageDetails {
             ListMessageDetails {
                 message_id: Hash::default(),
-                from_acct: ZERO_ADDRESS.into(),
+                from_acct: AccountId::from([0x0; 32]),
                 username: <Vec<u8>>::default(),
                 to_list_id: Hash::default(),
                 to_list_name: <Vec<u8>>::default(),
@@ -175,12 +112,38 @@ mod geode_messaging {
         }
     }
 
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
+    pub struct PaidMessageDetails {
+        message_id: Hash,
+        from_acct: AccountId,
+        from_username: Vec<u8>,
+        to_acct: AccountId,
+        message: Vec<u8>, 
+        file_url: Vec<u8>,
+        timestamp: u64,
+        bid: Balance,
+    }
+
+    impl Default for PaidMessageDetails {
+        fn default() -> PaidMessageDetails {
+            PaidMessageDetails {
+                message_id: Hash::default(),
+                from_acct: AccountId::from([0x0; 32]),
+                from_username: <Vec<u8>>::default(),
+                to_acct: AccountId::from([0x0; 32]),
+                message: <Vec<u8>>::default(),
+                file_url: <Vec<u8>>::default(),
+                timestamp: u64::default(),
+                bid: Balance::default(),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct AccountVector {
         accountvector: Vec<AccountId>,
     }
@@ -193,36 +156,23 @@ mod geode_messaging {
         }
     }
 
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq, Default)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct HashVector {
         hashvector: Vec<Hash>,
     }
 
-    impl Default for HashVector {
-        fn default() -> HashVector {
-            HashVector {
-              hashvector: <Vec<Hash>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct GroupDetails {
         group_id: Hash,
         group_name: Vec<u8>,
         hide_from_search: bool,
         description: Vec<u8>,
         group_accounts: Vec<AccountId>,
+        subscribers: u128,
     }
 
     impl Default for GroupDetails {
@@ -233,118 +183,72 @@ mod geode_messaging {
                 hide_from_search: false,
                 description: <Vec<u8>>::default(),
                 group_accounts: <Vec<AccountId>>::default(),
+                subscribers: u128::default(),
             }
         }
     }
 
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq, Default)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct GroupPublicDetails {
         group_id: Hash,
         group_name: Vec<u8>,
         description: Vec<u8>,
+        subscribers: u128,
     }
 
-    impl Default for GroupPublicDetails {
-        fn default() -> GroupPublicDetails {
-            GroupPublicDetails {
-                group_id: Hash::default(),
-                group_name: <Vec<u8>>::default(),
-                description: <Vec<u8>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct OpenListDetails {
         list_id: Hash,
         owner: AccountId,
         list_name: Vec<u8>,
         hide_from_search: bool,
         description: Vec<u8>,
-        list_accounts: Vec<AccountId>,
+        list_accounts: u128,
     }
 
     impl Default for OpenListDetails {
         fn default() -> OpenListDetails {
             OpenListDetails {
                 list_id: Hash::default(),
-                owner: ZERO_ADDRESS.into(),
+                owner: AccountId::from([0x0; 32]),
                 list_name: <Vec<u8>>::default(),
                 hide_from_search: false,
                 description: <Vec<u8>>::default(),
-                list_accounts: <Vec<AccountId>>::default(),
+                list_accounts: u128::default(),
             }
         }
     }
 
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct OpenListPublicDetails {
         list_id: Hash,
         owner: AccountId,
         list_name: Vec<u8>,
         description: Vec<u8>,
+        list_accounts: u128,
     }
 
     impl Default for OpenListPublicDetails {
         fn default() -> OpenListPublicDetails {
             OpenListPublicDetails {
                 list_id: Hash::default(),
-                owner: ZERO_ADDRESS.into(),
+                owner: AccountId::from([0x0; 32]),
                 list_name: <Vec<u8>>::default(),
                 description: <Vec<u8>>::default(),
+                list_accounts: u128::default(),
             }
         }
     }
 
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
-    pub struct PaidListDetails {
-        list_id: Hash,
-        owner: AccountId,
-        list_name: Vec<u8>,
-        total_fee: Balance,
-        description: Vec<u8>,
-        list_accounts: Vec<AccountId>,
-    }
-
-    impl Default for PaidListDetails {
-        fn default() -> PaidListDetails {
-            PaidListDetails {
-                list_id: Hash::default(),
-                owner: ZERO_ADDRESS.into(),
-                list_name: <Vec<u8>>::default(),
-                total_fee: Balance::default(),
-                description: <Vec<u8>>::default(),
-                list_accounts: <Vec<AccountId>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct ConversationWithAccount {
         allowed_account: AccountId,
         username: Vec<u8>,
@@ -354,195 +258,49 @@ mod geode_messaging {
     impl Default for ConversationWithAccount {
         fn default() -> ConversationWithAccount {
             ConversationWithAccount {
-                allowed_account: ZERO_ADDRESS.into(),
+                allowed_account: AccountId::from([0x0; 32]),
                 username: <Vec<u8>>::default(),
                 conversation: <Vec<MessageDetails>>::default(),
             }
         }
     }
 
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq, Default)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct MessagesFromList {
         allowed_list: Hash,
         list_name: Vec<u8>,
         list_messages: Vec<ListMessageDetails>
     }
 
-    impl Default for MessagesFromList {
-        fn default() -> MessagesFromList {
-            MessagesFromList {
-                allowed_list: Hash::default(),
-                list_name: <Vec<u8>>::default(),
-                list_messages: <Vec<ListMessageDetails>>::default()
-            }
-        }
+    #[derive(Clone, Debug, PartialEq, Eq, Default)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
+    pub struct MyInboxLists {
+        lists: Vec<MessagesFromList>,
+        defunct_lists: Vec<Hash>,
     }
 
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
-    pub struct MyInbox {
-        blocked_accts: Vec<AccountId>,
-        people: Vec<ConversationWithAccount>,
-        groups: Vec<MessagesFromList>,
-        lists: Vec<MessagesFromList>
-    }
-
-    impl Default for MyInbox {
-        fn default() -> MyInbox {
-            MyInbox {
-                blocked_accts: <Vec<AccountId>>::default(),
-                people: <Vec<ConversationWithAccount>>::default(),
-                groups: <Vec<MessagesFromList>>::default(),
-                lists: <Vec<MessagesFromList>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
-    pub struct InboxSearchResults {
-        search: Vec<u8>,
-        private_messages: Vec<MessageDetails>,
-        group_messages: Vec<ListMessageDetails>,
-        list_messages: Vec<ListMessageDetails>,
-    }
-
-    impl Default for InboxSearchResults {
-        fn default() -> InboxSearchResults {
-            InboxSearchResults {
-                search: <Vec<u8>>::default(),
-                private_messages: <Vec<MessageDetails>>::default(),
-                group_messages: <Vec<ListMessageDetails>>::default(),
-                list_messages: <Vec<ListMessageDetails>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
-    pub struct InboxAcctSearchResults {
-        search: AccountId,
-        username: Vec<u8>,
-        private_messages: Vec<MessageDetails>,
-        group_messages: Vec<ListMessageDetails>,
-        list_messages: Vec<ListMessageDetails>,
-    }
-
-    impl Default for InboxAcctSearchResults {
-        fn default() -> InboxAcctSearchResults {
-            InboxAcctSearchResults {
-                search: ZERO_ADDRESS.into(),
-                username: <Vec<u8>>::default(),
-                private_messages: <Vec<MessageDetails>>::default(),
-                group_messages: <Vec<ListMessageDetails>>::default(),
-                list_messages: <Vec<ListMessageDetails>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq, Default)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct GroupSearchResults {
-        search: Vec<u8>,
+        search: Vec<Vec<u8>>,
         groups: Vec<GroupPublicDetails>,
     }
 
-    impl Default for GroupSearchResults {
-        fn default() -> GroupSearchResults {
-            GroupSearchResults {
-                search: <Vec<u8>>::default(),
-                groups: <Vec<GroupPublicDetails>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq, Default)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct ListSearchResults {
-        search: Vec<u8>,
+        search: Vec<Vec<u8>>,
         lists: Vec<OpenListPublicDetails>,
     }
 
-    impl Default for ListSearchResults {
-        fn default() -> ListSearchResults {
-            ListSearchResults {
-                search: <Vec<u8>>::default(),
-                lists: <Vec<OpenListPublicDetails>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
-    pub struct AccountSearchResults {
-        search: Vec<u8>,
-        accounts: Vec<Settings>,
-    }
-
-    impl Default for AccountSearchResults {
-        fn default() -> AccountSearchResults {
-            AccountSearchResults {
-                search: <Vec<u8>>::default(),
-                accounts: <Vec<Settings>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
-    pub struct MyPaidInbox {
-        blocked_lists: Vec<Hash>,
-        messages: Vec<ListMessageDetails>,
-    }
-
-    impl Default for MyPaidInbox {
-        fn default() -> MyPaidInbox {
-            MyPaidInbox {
-                blocked_lists: <Vec<Hash>>::default(),
-                messages: <Vec<ListMessageDetails>>::default(),
-            }
-        }
-    }
-
-    #[derive(Clone, scale::Decode, scale::Encode)]
-    #[cfg_attr(feature = "std",
-        derive(ink::storage::traits::StorageLayout, 
-            scale_info::TypeInfo, Debug, PartialEq, Eq
-        )
-    )]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
     pub struct AccountsAllowedAndBlocked {
         allowed_accounts: Vec<AccountId>,
         blocked_accounts: Vec<AccountId>,
@@ -557,15 +315,94 @@ mod geode_messaging {
         }
     }
 
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std",derive(ink::storage::traits::StorageLayout,))]
+    pub struct RewardSettings {
+        reward_on: u8,
+        reward_root_set: u8,
+        reward_root: AccountId,
+        reward_interval: u128,
+        reward_amount: Balance,
+        reward_balance: Balance,
+        reward_payouts: Balance,
+        claim_counter: u128,
+    }
+
+    impl Default for RewardSettings {
+        fn default() -> RewardSettings {
+            RewardSettings {
+                reward_on: u8::default(),
+                reward_root_set: u8::default(),
+                reward_root: AccountId::from([0x0; 32]),
+                reward_interval: u128::default(),
+                reward_amount: Balance::default(),
+                reward_balance: Balance::default(),
+                reward_payouts: Balance::default(),
+                claim_counter: u128::default(),
+            }
+        }
+    }
+
 
     // EVENT DEFINITIONS >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    // no events emitted in this contract
+    
+    #[ink(event)]
+    // when a user updates their settings
+    pub struct SettingsUpdated {
+        #[ink(topic)]
+        from: AccountId,
+        #[ink(topic)]
+        username: Vec<u8>,
+        #[ink(topic)]
+        interests: Vec<u8>,
+        inbox_fee: Balance,
+    }
+
+    #[ink(event)]
+    // when a new public group is created
+    pub struct NewPublicGroup {
+        #[ink(topic)]
+        from: AccountId,
+        #[ink(topic)]
+        group_id: Hash,
+        #[ink(topic)]
+        group_name: Vec<u8>,
+        description: Vec<u8>,
+    }
+
+    #[ink(event)]
+    // when a new public newsletter list is created
+    pub struct NewPublicList {
+        #[ink(topic)]
+        list_id: Hash,
+        #[ink(topic)]
+        owner: AccountId,
+        #[ink(topic)]
+        list_name: Vec<u8>,
+        description: Vec<u8>,
+    }
+
+    #[ink(event)]
+    // when a new public newsletter list is created
+    pub struct ListDeleted {
+        #[ink(topic)]
+        list_id: Hash,
+    }
+
+    #[ink(event)]
+    // Writes the new reward to the blockchain 
+    pub struct AccountRewardedMessaging {
+        #[ink(topic)]
+        claimant: AccountId,
+        reward: Balance,
+    }
 
 
     // ERROR DEFINITIONS >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-    #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(::scale_info::TypeInfo))]
+    #[derive(Debug, PartialEq, Eq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
     pub enum Error {
         // Allowing an account that you allow already
         DuplicateAllow,
@@ -601,57 +438,56 @@ mod geode_messaging {
         ZeroBalance,
         // if the an inbox or data payment fails
         PayoutFailed,
-        // Reentrancy Guard error
-        ReentrancyError(ReentrancyGuardError),
         // Returned if the username already belongs to someone else.
         UsernameTaken,
         // removing an account that was not there
         NonexistentAccount,
-    }
-
-    impl From<ReentrancyGuardError> for Error {
-        fn from(error:ReentrancyGuardError) -> Self {
-            Error::ReentrancyError(error)
-        }
+        // input data is too large
+        DataTooLarge,
+        // Cannot follow any more accounts or storage otherwise full
+        StorageFull,
+        // trying to send a paid message without enough stake or to 
+        // someone who has blocked you
+        CannotSendPaidMessage,
+        // attempting to change reward program settings without permission
+        PermissionDenied,
     }
 
 
     // ACTUAL CONTRACT STORAGE STRUCT >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     #[ink(storage)]
-    #[derive(Default, Storage)]
     pub struct ContractStorage {
-        #[storage_field]
-        guard: reentrancy_guard::Data,
         account_settings: Mapping<AccountId, Settings>,
         account_allowed: Mapping<AccountId, AccountVector>,
         account_blocked_accounts: Mapping<AccountId, AccountVector>,
         account_blocked_lists: Mapping<AccountId, HashVector>,
         account_subscribed_groups: Mapping<AccountId, HashVector>,
         account_owned_open_lists: Mapping<AccountId, HashVector>,
-        account_owned_paid_lists: Mapping<AccountId, HashVector>,
-        paid_lists_with_account: Mapping<AccountId, HashVector>,
+        account_paid_inbox: Mapping<AccountId, HashVector>,
         account_subscribed_lists: Mapping<AccountId, HashVector>,
         sent_messages_to_account: Mapping<(AccountId, AccountId), HashVector>,
         sent_messages_to_list: Mapping<Hash, HashVector>,
-        sent_messages_to_paid_list: Mapping<Hash, HashVector>,
         sent_messages_to_group: Mapping<(AccountId, Hash), HashVector>,
         all_messages_to_group: Mapping<Hash, HashVector>,
         message_details: Mapping<Hash, MessageDetails>,
         list_message_details: Mapping<Hash, ListMessageDetails>,
-        paid_list_message_details: Mapping<Hash, ListMessageDetails>,
+        paid_message_details: Mapping<Hash, PaidMessageDetails>,
         group_message_details: Mapping<Hash, ListMessageDetails>,
         open_list_details: Mapping<Hash, OpenListDetails>,
-        paid_list_details: Mapping<Hash, PaidListDetails>,
         group_details: Mapping<Hash, GroupDetails>,
-        open_lists: Vec<Hash>,
-        groups: Vec<Hash>,
+        open_lists: StorageVec<Hash>,
+        groups: StorageVec<Hash>,
         username_map: Mapping<Vec<u8>, AccountId>,
-        all_accounts_with_settings: Vec<AccountId>,
+        reward_root_set: u8,
+        reward_root: AccountId,
+        reward_interval: u128,
+        reward_amount: Balance,
+        reward_on: u8,
+        reward_balance: Balance,
+        reward_payouts: Balance,
+        claim_counter: u128,
     }
-
-    // note: to remove an entry from a mapping use my_map.remove(thing) 
-    // see this page: https://use.ink/datastructures/mapping/
 
 
     // BEGIN CONTRACT LOGIC >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -664,40 +500,43 @@ mod geode_messaging {
         #[ink(constructor)]
         pub fn new() -> Self {
             Self {
-                guard: Default::default(),
                 account_settings: Mapping::default(),
                 account_allowed: Mapping::default(),
                 account_blocked_accounts: Mapping::default(),
                 account_blocked_lists: Mapping::default(),
                 account_subscribed_groups: Mapping::default(),
                 account_owned_open_lists: Mapping::default(),
-                account_owned_paid_lists: Mapping::default(),
-                paid_lists_with_account: Mapping::default(),
+                account_paid_inbox: Mapping::default(),
                 account_subscribed_lists: Mapping::default(),
                 sent_messages_to_account: Mapping::default(),
                 sent_messages_to_list: Mapping::default(),
-                sent_messages_to_paid_list: Mapping::default(),
                 sent_messages_to_group: Mapping::default(),
                 all_messages_to_group: Mapping::default(),
                 message_details: Mapping::default(),
                 list_message_details: Mapping::default(),
-                paid_list_message_details: Mapping::default(),
+                paid_message_details: Mapping::default(),
                 group_message_details: Mapping::default(),
                 open_list_details: Mapping::default(),
-                paid_list_details: Mapping::default(),
                 group_details: Mapping::default(),
-                open_lists: <Vec<Hash>>::default(),
-                groups: <Vec<Hash>>::default(),
+                open_lists: StorageVec::default(),
+                groups: StorageVec::default(),
                 username_map: Mapping::default(),
-                all_accounts_with_settings: <Vec<AccountId>>::default(),
+                reward_root_set: 0,
+                reward_root: AccountId::from([0x0; 32]),
+                reward_interval: 1000000,
+                reward_amount: 0,
+                reward_on: 0,
+                reward_balance: 0,
+                reward_payouts: 0,
+                claim_counter: 0,
             }
         }
 
 
         // MESSAGE FUNCTIONS THAT CHANGE DATA IN THE CONTRACT STORAGE >>>>>>>>>>>>>>>>>>>
 
-        // 1 🟢 Update Settings 
-        // lets a user to update their list of keyword interests and other settings 
+        // 0 🟢 Update Settings 
+        // lets a user update their list of keyword interests and other settings 
         // overwrites the mapping in contract storage
         #[ink(message)]
         pub fn update_settings (&mut self, 
@@ -706,10 +545,16 @@ mod geode_messaging {
             my_inbox_fee: Balance,
             hide_from_search: bool
         ) -> Result<(), Error> {
+            // if the input data is too bid, send an error
+            if my_username.len() > 100 || my_interests.len() > 600 {
+                return Err(Error::DataTooLarge);
+            }
+
             let username_clone1 = my_username.clone();
             let username_clone2 = my_username.clone();
             let username_clone3 = my_username.clone();
-            let interests_clone = my_interests.clone();
+            let username_clone4 = my_username.clone();
+            let interests_clone2 = my_interests.clone();
 
             // get the current settings for this caller and prepare the update
             let caller = Self::env().caller();
@@ -724,72 +569,63 @@ mod geode_messaging {
             };
             
             // check that this user has not updated their settings in 24 hours
-            let time_since_last_update = self.env().block_timestamp() - current_settings.last_update;
+            let time_since_last_update = self.env().block_timestamp().saturating_sub(current_settings.last_update);
             if time_since_last_update < 86400000 {
                 // send an error that interest cannot be updated so soon
                 return Err(Error::CannotUpdateInterestsWithin24Hours)
             }
             else {
-                // check that the set of interest keywords are not too long
-                // maximum length is 600 which would give us 300 characters
-                let interests_length = interests_clone.len();
-                if interests_length > 600 {
-                    // intrests are too long, send an error
-                    return Err(Error::InterestsTooLong)
-                }
-                else {
-                    // check that the username is not taken by someone else...
-                    // if the username is in use already...
-                    if self.username_map.contains(username_clone1) {
-                        // get the account that owns that username
-                        let current_owner = self.username_map.get(&username_clone2).unwrap();
-                        // if the caller owns that username, update the storage maps
-                        if current_owner == caller {
-                            self.account_settings.insert(&caller, &settings_update);
-                            // add this account to the vector of accounts with settings
-                            if self.all_accounts_with_settings.contains(&caller) {
-                                // do nothing
-                            }
-                            else {
-                                // add the caller to the vector of accounts with settings
-                                self.all_accounts_with_settings.push(caller);
-                            }
-                            
-                        }
-                        else {
-                            // if the username belongs to someone else, send an error UsernameTaken
-                            return Err(Error::UsernameTaken)
+                // check that the username is not taken by someone else...
+                // if the username is in use already...
+                if self.username_map.contains(username_clone1) {
+                    // get the account that owns that username
+                    let current_owner = self.username_map.get(&username_clone2).unwrap();
+                    // if the caller owns that username, update the storage maps
+                    if current_owner == caller {
+                        if self.account_settings.try_insert(&caller, &settings_update).is_err() {
+                            return Err(Error::DataTooLarge);
                         }
                     }
                     else {
-                        // if the username is not already in use, update the storage map
-                        self.account_settings.insert(&caller, &settings_update);
-                        // then update the username map
-                        self.username_map.insert(&username_clone3, &caller);
-                        // then add this account to the vector of accounts with settings
-                        if self.all_accounts_with_settings.contains(&caller) {
-                            // do nothing
-                        }
-                        else {
-                            // add the caller to the vector of accounts with settings
-                            self.all_accounts_with_settings.push(caller);
-                        }
+                        // if the username belongs to someone else, send an error UsernameTaken
+                        return Err(Error::UsernameTaken)
                     }
                 }
-                
+                else {
+                    // if the username is not already in use, update the storage maps
+                    // update the account_settings map
+                    self.account_settings.insert(&caller, &settings_update);
+                    // then update the username map
+                    self.username_map.insert(&username_clone3, &caller);
+                }
+
+                // Emit an event to register the update to the chain
+                // but only if the caller is not hidden
+                if hide_from_search == false {
+                    Self::env().emit_event(SettingsUpdated {
+                        from: caller,
+                        username: username_clone4,
+                        interests: interests_clone2,
+                        inbox_fee: my_inbox_fee,
+                    });
+                }
             }
             
             Ok(())
         }
 
         
-        // 2 🟢 Send A Private Message
+        // 1 🟢 Send A Private Message 🏆
         #[ink(message)]
         pub fn send_private_message (&mut self, 
             to_acct: AccountId,
             new_message: Vec<u8>, 
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
+            // if the input data is too large, send an error
+            if new_message.len() > 600 || file_url.len() > 300 {
+                return Err(Error::DataTooLarge);
+            }
             // get the list of allowed accounts for to_acct
             let current_allowed = self.account_allowed.get(&to_acct).unwrap_or_default();
             // if caller is in the allowed accounts, proceed
@@ -819,17 +655,50 @@ mod geode_messaging {
                     timestamp: self.env().block_timestamp(),
                 };
 
+                // get the messages vector for this pair of accounts
+                let mut current_messages = self.sent_messages_to_account.get((&caller, &to_acct)).unwrap_or_default();
+                // if the vector is full, kick out the oldest message
+                if current_messages.hashvector.len() > 2 {
+                    // remove the oldest message from message_details
+                    let oldest = current_messages.hashvector[0];
+                    self.message_details.remove(oldest);
+                    // remove the oldest message from sent_messages_to_account
+                    current_messages.hashvector.remove(0);
+                }
+
                 // update the message_details: Mapping<Hash, MessageDetails>
-                self.message_details.insert(&new_message_id, &new_details);
+                if self.message_details.try_insert(&new_message_id, &new_details).is_err() {
+                    return Err(Error::DataTooLarge);
+                } 
 
                 // update the sent_messages_to_account: Mapping<(AccountId, AccountId), HashVector>
-                // get the messages vector for this pair of accounts
-                let caller = Self::env().caller();
-                let mut current_messages = self.sent_messages_to_account.get((&caller, &to_acct)).unwrap_or_default();
                 // add this message to the messages vector for this account
                 current_messages.hashvector.push(new_message_id);
                 // update the sent_messages_to_account map
                 self.sent_messages_to_account.insert((&caller, &to_acct), &current_messages);
+
+                // REWARD PROGRAM ACTIONS... update the claim_counter 
+                self.claim_counter = self.claim_counter.wrapping_add(1);
+                // IF conditions are met THEN payout a reward
+                let min = self.reward_amount.saturating_add(10);
+                let payout: Balance = self.reward_amount;
+                if self.reward_on == 1 && self.reward_balance > payout && self.env().balance() > min
+                && self.claim_counter.checked_rem_euclid(self.reward_interval) == Some(0) {
+                    // payout
+                    if self.env().transfer(caller, payout).is_err() {
+                        return Err(Error::PayoutFailed);
+                    }
+                    // update reward_balance
+                    self.reward_balance = self.reward_balance.saturating_sub(payout);
+                    // update reward_payouts
+                    self.reward_payouts = self.reward_payouts.saturating_add(payout);
+                    // emit an event to register the reward to the chain
+                    Self::env().emit_event(AccountRewardedMessaging {
+                        claimant: caller,
+                        reward: payout
+                    });
+                }
+                // END REWARD PROGRAM ACTIONS
 
                 Ok(())
             }
@@ -841,20 +710,25 @@ mod geode_messaging {
         }
 
 
-        // 3 🟢 Send A Message To Group
+        // 2 🟢 Send A Message To Group 🏆
         #[ink(message)]
         pub fn send_message_to_group (&mut self, 
             to_group_id: Hash,
             new_message: Vec<u8>, 
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
+            // if the input data is too large, send an error
+            if new_message.len() > 600 || file_url.len() > 300 {
+                return Err(Error::DataTooLarge);
+            }
+
             // check that the group actually exists
-            if self.groups.contains(&to_group_id) {
+            if self.group_details.contains(&to_group_id) {
 
                 // check that the caller is in the group
-                let from = Self::env().caller();
-                let groupdetails = self.group_details.get(&to_group_id).unwrap_or_default();
-                if groupdetails.group_accounts.contains(&from) {
+                let caller = Self::env().caller();
+                let mygroups = self.account_subscribed_groups.get(&caller).unwrap_or_default();
+                if mygroups.hashvector.contains(&to_group_id) {
 
                     // set up clones
                     let new_message_clone = new_message.clone();
@@ -863,18 +737,17 @@ mod geode_messaging {
                     let new_timestamp = self.env().block_timestamp();
 
                     // create the new_message_id by hashing the above data
-                    let encodable = (from, to_group_id, new_message, new_timestamp); // Implements `scale::Encode`
+                    let encodable = (caller, to_group_id, new_message, new_timestamp); // Implements `scale::Encode`
                     let mut new_message_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
                     ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_message_id_u8);
                     let new_message_id: Hash = Hash::from(new_message_id_u8);
 
                     // SET UP THE MESSAGE DETAILS FOR THE NEW MESSAGE
-                    let caller = Self::env().caller();
                     let fromusername = self.account_settings.get(&caller).unwrap_or_default().username;
                     let listname = self.group_details.get(&to_group_id).unwrap_or_default().group_name;
                     let new_details = ListMessageDetails {
                         message_id: new_message_id,
-                        from_acct: Self::env().caller(),
+                        from_acct: caller,
                         username: fromusername,
                         to_list_id: to_group_id,
                         to_list_name: listname,
@@ -883,25 +756,74 @@ mod geode_messaging {
                         timestamp: self.env().block_timestamp(),
                     };
 
-                    // update group_message_details: Mapping<Hash, ListMessageDetails>
-                    self.group_message_details.insert(&new_message_id, &new_details);
-
                     // update sent_messages_to_group: Mapping<(AccountId, Hash), HashVector>
                     // get the messages vector for this pair of account/group
-                    let caller = Self::env().caller();
                     let mut current_messages = self.sent_messages_to_group.get((&caller, &to_group_id)).unwrap_or_default();
+                    // if their storage is full, kick out the oldest message
+                    if current_messages.hashvector.len() > 24 {
+                        let oldest = current_messages.hashvector[0];
+                        // remove oldest from all_messages_to_group
+                        self.all_messages_to_group.remove(oldest);
+                        // remove oldest from group_message_details
+                        self.group_message_details.remove(oldest);
+                        // remove oldest from sent_messages_to_group
+                        current_messages.hashvector.remove(0);
+                    }
+
+                    // update all_messages_to_group: Mapping<Hash, HashVector>
+                    // get the messages vector for this group
+                    let mut current_group_messages = self.all_messages_to_group.get(&to_group_id).unwrap_or_default();
+                    // if the group message storage is full, kick out the oldest message
+                    if current_group_messages.hashvector.len() > 24 {
+                        let oldest = current_group_messages.hashvector[0];
+                        let oldest_from = self.group_message_details.get(oldest).unwrap_or_default().from_acct;
+                        // remove oldest message in the all_messages_to_group list
+                        current_group_messages.hashvector.remove(0);
+                        // remove oldest message from message_details
+                        self.message_details.remove(oldest);
+                        // remove oldest message from sent_messages_to_group 
+                        let mut thislist = self.sent_messages_to_group.get((oldest_from, to_group_id)).unwrap_or_default();
+                        thislist.hashvector.retain(|value| *value != oldest);
+                        self.sent_messages_to_group.insert((oldest_from, to_group_id), &thislist);
+                    }
+
                     // add this message to the messages vector for this account
                     current_messages.hashvector.push(new_message_id);
                     // update the sent_messages_to_group map
                     self.sent_messages_to_group.insert((&caller, &to_group_id), &current_messages);
-
-                    // update all_messages_to_group: Mapping<Hash, HashVector>
-                    // get the messages vector for this group
-                    let mut current_messages = self.all_messages_to_group.get(&to_group_id).unwrap_or_default();
+                    
                     // add this message to the messages vector for this account
-                    current_messages.hashvector.push(new_message_id);
-                    // update the sent_messages_to_group map
-                    self.all_messages_to_group.insert(&to_group_id, &current_messages);
+                    current_group_messages.hashvector.push(new_message_id);
+                    // update the all_messages_to_group map
+                    self.all_messages_to_group.insert(&to_group_id, &current_group_messages);
+
+                    // update group_message_details: Mapping<Hash, ListMessageDetails>
+                    if self.group_message_details.try_insert(&new_message_id, &new_details).is_err() {
+                        return Err(Error::DataTooLarge);
+                    }
+
+                    // REWARD PROGRAM ACTIONS... update the claim_counter 
+                    self.claim_counter = self.claim_counter.wrapping_add(1);
+                    // IF conditions are met THEN payout a reward
+                    let min = self.reward_amount.saturating_add(10);
+                    let payout: Balance = self.reward_amount;
+                    if self.reward_on == 1 && self.reward_balance > payout && self.env().balance() > min
+                    && self.claim_counter.checked_rem_euclid(self.reward_interval) == Some(0) {
+                        // payout
+                        if self.env().transfer(caller, payout).is_err() {
+                            return Err(Error::PayoutFailed);
+                        }
+                        // update reward_balance
+                        self.reward_balance = self.reward_balance.saturating_sub(payout);
+                        // update reward_payouts
+                        self.reward_payouts = self.reward_payouts.saturating_add(payout);
+                        // emit an event to register the reward to the chain
+                        Self::env().emit_event(AccountRewardedMessaging {
+                            claimant: caller,
+                            reward: payout
+                        });
+                    }
+                    // END REWARD PROGRAM ACTIONS
 
                 }
                 else {
@@ -918,28 +840,38 @@ mod geode_messaging {
         }
 
 
-        // 4 🟢 Allow Account
+        // 3 🟢 Allow Account
         #[ink(message)]
-        pub fn allow_account (&mut self, allow: AccountId) -> Result<(), Error> {
-            // Is this account already allowed? If TRUE, send ERROR
+        pub fn allow_account (&mut self, allow: Vec<AccountId>) -> Result<(), Error> {
             let caller = Self::env().caller();
             let mut current_allowed = self.account_allowed.get(&caller).unwrap_or_default();
-            if current_allowed.accountvector.contains(&allow) {
-                return Err(Error::DuplicateAllow);
-            }
-            // Otherwise, update the account_allowed map for this caller
-            else {
-                // add the new allow to the the vector of accounts caller is allowing
-                current_allowed.accountvector.push(allow);
+            
+            // if there is room in the allowed account vector...
+            if current_allowed.accountvector.len().saturating_add(allow.len()) < 60 {
+                // proceed to add each account
+                for acct in allow {
+                    // Is this account already allowed? If TRUE, send ERROR
+                    if current_allowed.accountvector.contains(&acct) {
+                        return Err(Error::DuplicateAllow);
+                    }
+                    else {
+                        // add the new allow to the the vector of accounts caller is allowing
+                        current_allowed.accountvector.push(acct);  
+                    }
+                }
                 // Update (overwrite) the account_allowed: Mapping<AccountID, AccountVector> map
                 self.account_allowed.insert(&caller, &current_allowed);
+            }
+            else {
+                // error: Account following is full
+                return Err(Error::StorageFull)
             }
             
             Ok(())
         }
 
 
-        // 5 🟢 Disallow Account
+        // 4 🟢 Disallow Account
         #[ink(message)]
         pub fn disallow_account (&mut self, disallow: AccountId) -> Result<(), Error> {
             // Is this account currently allowed? If TRUE, proceed...
@@ -961,28 +893,34 @@ mod geode_messaging {
         }
 
 
-        // 6 🟢 Block Account
+        // 5 🟢 Block Account
         #[ink(message)]
         pub fn block_account (&mut self, block: AccountId) -> Result<(), Error> {
             // Is this account already being blocked? If TRUE, send ERROR
             let caller = Self::env().caller();
             let mut current_blocked = self.account_blocked_accounts.get(&caller).unwrap_or_default();
-            if current_blocked.accountvector.contains(&block) {
-                return Err(Error::DuplicateBlock);
+            // check that there is room in storage
+            if current_blocked.accountvector.len() < 400 {
+                if current_blocked.accountvector.contains(&block) {
+                    return Err(Error::DuplicateBlock);
+                }
+                // Otherwise, update the account_blocked_accounts for this caller
+                else {
+                    // add the new block to the the vector of accounts caller is blocking
+                    current_blocked.accountvector.push(block);
+                    // Update (overwrite) the account_blocked_accounts: Mapping<AccountID, AccountVector> map
+                    self.account_blocked_accounts.insert(&caller, &current_blocked);
+                }
             }
-            // Otherwise, update the account_blocked_accounts for this caller
             else {
-                // add the new block to the the vector of accounts caller is blocking
-                current_blocked.accountvector.push(block);
-                // Update (overwrite) the account_blocked_accounts: Mapping<AccountID, AccountVector> map
-                self.account_blocked_accounts.insert(&caller, &current_blocked);
+                return Err(Error::StorageFull);
             }
             
             Ok(())
         }
 
 
-        // 7 🟢 Unblock Account
+        // 6 🟢 Unblock Account
         #[ink(message)]
         pub fn unblock_account (&mut self, unblock: AccountId) -> Result<(), Error> {
             // Is this account currently being blocked? If TRUE, proceed...
@@ -1004,7 +942,7 @@ mod geode_messaging {
         }
 
 
-        // 8 🟢 Delete A Single Message To An Account
+        // 7 🟢 Delete A Single Message To An Account
         #[ink(message)]
         pub fn delete_single_message_to_account (&mut self, message_id_to_delete: Hash) -> Result<(), Error> {
             // does this message exist? If it does, proceed
@@ -1031,7 +969,7 @@ mod geode_messaging {
         }
         
 
-        // 9 🟢 Delete All Messages Sent To Account
+        // 8 🟢 Delete All Messages Sent To Account
         #[ink(message)]
         pub fn delete_all_messages_to_account (&mut self, 
             delete_all_messages_to: AccountId
@@ -1052,7 +990,7 @@ mod geode_messaging {
         }
 
 
-        // 10 🟢 Make A Group (public or private)
+        // 9 🟢 Make A Group (public or private) 🏆
         #[ink(message)]
         pub fn make_a_new_group (&mut self, 
             new_group_name: Vec<u8>,
@@ -1061,100 +999,158 @@ mod geode_messaging {
             first_message: Vec<u8>,
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
-            // set up any clones needed
-            let first_message_clone = first_message.clone();
-            let new_group_name_clone = new_group_name.clone();
-            let new_group_name_clone2 = new_group_name.clone();
-            // create the new_group_id by hashing the group name
-            let encodable = new_group_name; // Implements `scale::Encode`
-            let mut new_group_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
-            ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_group_id_u8);
-            let new_group_id: Hash = Hash::from(new_group_id_u8);
+            // if the input data is too large, send an error
+            if new_group_name.len() > 100 || description.len() > 600 || first_message.len() > 600 
+            || file_url.len() > 600 {
+                return Err(Error::DataTooLarge);
+            }
+            
+            // do you have room in your subscribed groups vector?
+            let caller = Self::env().caller();
+            let caller_groups = self.account_subscribed_groups.get(caller).unwrap_or_default();
+            if caller_groups.hashvector.len() < 15 {
+                // proceed...
+                // set up any clones needed
+                let first_message_clone = first_message.clone();
+                let new_group_name_clone = new_group_name.clone();
+                let new_group_name_clone2 = new_group_name.clone();
+                let new_group_name_clone3 = new_group_name.clone();
+                let new_group_description_clone = new_group_name.clone();
+                
+                // create the new_group_id by hashing the group name
+                let encodable = new_group_name; // Implements `scale::Encode`
+                let mut new_group_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
+                ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_group_id_u8);
+                let new_group_id: Hash = Hash::from(new_group_id_u8);
 
-            // is the group name already taken?
-            if self.groups.contains(&new_group_id) {
-                // send an error
-                return Err(Error::GroupNameTaken);
+                // is the group name already taken?
+                if self.group_details.contains(&new_group_id) {
+                    // send an error
+                    return Err(Error::GroupNameTaken);
+                }
+                else {
+                    // proceed to set up the group
+                    // set up the group details and 
+                    // make the caller the first subscriber
+
+                    let new_group = GroupDetails {
+                        group_id: new_group_id,
+                        group_name: new_group_name_clone,
+                        hide_from_search: hide_from_search,
+                        description: description,
+                        group_accounts: vec![caller],
+                        subscribers: 1,
+                    };
+
+                    // add it to group_details: Mapping<Hash, GroupDetails>
+                    self.group_details.insert(&new_group_id, &new_group);
+
+                    // add the group_id to the groups: StorageVec<Hash> in storage
+                    self.groups.push(&new_group_id);
+
+                    // add this group hash to the caller's account_subscribed_groups: Mapping<AccountID, HashVector>
+                    // get the caller's account_subscribed_groups
+                    let mut caller_groups = self.account_subscribed_groups.get(&caller).unwrap_or_default();
+                    // add this new group to the vector
+                    caller_groups.hashvector.push(new_group_id);
+                    // update the mapping
+                    self.account_subscribed_groups.insert(&caller, &caller_groups);
+
+                    // send the first message to the group... 
+
+                    // create the new_message_id by hashing the right data
+                    let new_timestamp = self.env().block_timestamp();
+                    let encodable = (caller, new_group_id, first_message, new_timestamp); // Implements `scale::Encode`
+                    let mut new_message_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
+                    ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_message_id_u8);
+                    let new_message_id: Hash = Hash::from(new_message_id_u8);
+
+                    // SET UP THE MESSAGE DETAILS FOR THE FIRST MESSAGE
+                    let fromusername = self.account_settings.get(&caller).unwrap_or_default().username;
+                    let new_details = ListMessageDetails {
+                        message_id: new_message_id,
+                        from_acct: Self::env().caller(),
+                        username: fromusername,
+                        to_list_id: new_group_id,
+                        to_list_name: new_group_name_clone2,
+                        message: first_message_clone,  
+                        file_url: file_url,
+                        timestamp: self.env().block_timestamp(),
+                    };
+
+                    // update group_message_details: Mapping<Hash, ListMessageDetails>
+                    if self.group_message_details.try_insert(&new_message_id, &new_details).is_err() {
+                        return Err(Error::DataTooLarge);
+                    }        
+
+                    // update sent_messages_to_group: Mapping<(AccountId, Hash), HashVector>
+                    // get the messages vector for this pair of account/group
+                    let caller = Self::env().caller();
+                    let mut current_messages = self.sent_messages_to_group.get((&caller, &new_group_id)).unwrap_or_default();
+                    // add this message to the messages vector for this account
+                    current_messages.hashvector.push(new_message_id);
+                    // update the sent_messages_to_group map
+                    self.sent_messages_to_group.insert((&caller, &new_group_id), &current_messages);
+
+                    // update all_messages_to_group: Mapping<Hash, HashVector>
+                    // get the messages vector for this group
+                    let mut current_messages = self.all_messages_to_group.get(&new_group_id).unwrap_or_default();
+                    // add this message to the messages vector for this account
+                    current_messages.hashvector.push(new_message_id);
+                    // update the all_messages_to_group map
+                    self.all_messages_to_group.insert(&new_group_id, &current_messages);
+
+                    // Emit an event to register the group to the chain
+                    // but only if the group is not hidden
+                    if hide_from_search == false {
+                        Self::env().emit_event(NewPublicGroup {
+                            from: caller,
+                            group_id: new_group_id,
+                            group_name: new_group_name_clone3,
+                            description: new_group_description_clone,
+                        });
+                    }
+
+                    // REWARD PROGRAM ACTIONS... update the claim_counter 
+                    self.claim_counter = self.claim_counter.wrapping_add(1);
+                    // IF conditions are met THEN payout a reward
+                    let min = self.reward_amount.saturating_add(10);
+                    let payout: Balance = self.reward_amount;
+                    if self.reward_on == 1 && self.reward_balance > payout && self.env().balance() > min
+                    && self.claim_counter.checked_rem_euclid(self.reward_interval) == Some(0) {
+                        // payout
+                        if self.env().transfer(caller, payout).is_err() {
+                            return Err(Error::PayoutFailed);
+                        }
+                        // update reward_balance
+                        self.reward_balance = self.reward_balance.saturating_sub(payout);
+                        // update reward_payouts
+                        self.reward_payouts = self.reward_payouts.saturating_add(payout);
+                        // emit an event to register the reward to the chain
+                        Self::env().emit_event(AccountRewardedMessaging {
+                            claimant: caller,
+                            reward: payout
+                        });
+                    }
+                    // END REWARD PROGRAM ACTIONS
+
+                }
             }
             else {
-                // proceed to set up the group
-                // set up the group details and 
-                // make the caller the first subscriber
-                let caller = Self::env().caller();
-                let new_group = GroupDetails {
-                    group_id: new_group_id,
-                    group_name: new_group_name_clone,
-                    hide_from_search: hide_from_search,
-                    description: description,
-                    group_accounts: vec![caller],
-                };
-                // add it to group_details: Mapping<Hash, GroupDetails>
-                self.group_details.insert(&new_group_id, &new_group);
-
-                // add the group_id to the groups: Vec<Hash> in storage
-                self.groups.push(new_group_id);
-
-                // add this group hash to the caller's account_subscribed_groups: Mapping<AccountID, HashVector>
-                // get the caller's account_subscribed_groups
-                let mut caller_groups = self.account_subscribed_groups.get(&caller).unwrap_or_default();
-                // add this new group to the vector
-                caller_groups.hashvector.push(new_group_id);
-                // update the mapping
-                self.account_subscribed_groups.insert(&caller, &caller_groups);
-
-                // send the first message to the group... 
-
-                // create the new_message_id by hashing the right data
-                let new_timestamp = self.env().block_timestamp();
-                let encodable = (caller, new_group_id, first_message, new_timestamp); // Implements `scale::Encode`
-                let mut new_message_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
-                ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_message_id_u8);
-                let new_message_id: Hash = Hash::from(new_message_id_u8);
-
-                // SET UP THE MESSAGE DETAILS FOR THE FIRST MESSAGE
-                let fromusername = self.account_settings.get(&caller).unwrap_or_default().username;
-                let new_details = ListMessageDetails {
-                    message_id: new_message_id,
-                    from_acct: Self::env().caller(),
-                    username: fromusername,
-                    to_list_id: new_group_id,
-                    to_list_name: new_group_name_clone2,
-                    message: first_message_clone,  
-                    file_url: file_url,
-                    timestamp: self.env().block_timestamp(),
-                };
-
-                // update group_message_details: Mapping<Hash, ListMessageDetails>
-                self.group_message_details.insert(&new_message_id, &new_details);
-
-                // update sent_messages_to_group: Mapping<(AccountId, Hash), HashVector>
-                // get the messages vector for this pair of account/group
-                let caller = Self::env().caller();
-                let mut current_messages = self.sent_messages_to_group.get((&caller, &new_group_id)).unwrap_or_default();
-                // add this message to the messages vector for this account
-                current_messages.hashvector.push(new_message_id);
-                // update the sent_messages_to_group map
-                self.sent_messages_to_group.insert((&caller, &new_group_id), &current_messages);
-
-                // update all_messages_to_group: Mapping<Hash, HashVector>
-                // get the messages vector for this group
-                let mut current_messages = self.all_messages_to_group.get(&new_group_id).unwrap_or_default();
-                // add this message to the messages vector for this account
-                current_messages.hashvector.push(new_message_id);
-                // update the sent_messages_to_group map
-                self.all_messages_to_group.insert(&new_group_id, &current_messages);
-
-                Ok(())
+                // send an error
+                return Err(Error::StorageFull);
             }
+
+            Ok(())
 
         }
 
 
-        // 11 🟢 Join A Group
+        // 10 🟢 Join A Group 🏆
         #[ink(message)]
         pub fn join_a_group (&mut self, group_id: Hash) -> Result<(), Error> {
             // does this group exist?
-            if self.groups.contains(&group_id) {
+            if self.group_details.contains(&group_id) {
                 // get the caller's currently subscribed groups
                 let caller = Self::env().caller();
                 let mut current_groups = self.account_subscribed_groups.get(&caller).unwrap_or_default();
@@ -1163,28 +1159,62 @@ mod geode_messaging {
                     return Err(Error::AlreadySubscribed);
                 }
                 else {
-                    // push this group id onto the account subscribed groups hashvector
-                    current_groups.hashvector.push(group_id);
-                    // update account_subscribed_groups: Mapping<AccountID, HashVector>
-                    self.account_subscribed_groups.insert(&caller, &current_groups);
-                    // Get the group details
-                    let mut new_group_details = self.group_details.get(&group_id).unwrap_or_default();
-                    // add this caller to the accounts vector
-                    new_group_details.group_accounts.push(caller);
-                    // update the group details mapping
-                    self.group_details.insert(&group_id, &new_group_details);
+                    // check to see if there is room in storage
+                    if current_groups.hashvector.len() < 20 {
+                        // push this group id onto the account subscribed groups hashvector
+                        current_groups.hashvector.push(group_id);
+                        // update account_subscribed_groups: Mapping<AccountID, HashVector>
+                        self.account_subscribed_groups.insert(&caller, &current_groups);
+                        // Get the group details
+                        let mut new_group_details = self.group_details.get(&group_id).unwrap_or_default();
+                        if new_group_details.group_accounts.len() < 10 {
+                            // add this caller to the accounts vector
+                            new_group_details.group_accounts.push(caller);
+                        }
+                        // add one to the subscriber count
+                        new_group_details.subscribers = new_group_details.subscribers.saturating_add(1);
+                        // update the group details mapping
+                        self.group_details.insert(&group_id, &new_group_details);
+
+                        // REWARD PROGRAM ACTIONS... update the claim_counter 
+                        self.claim_counter = self.claim_counter.wrapping_add(1);
+                        // IF conditions are met THEN payout a reward
+                        let min = self.reward_amount.saturating_add(10);
+                        let payout: Balance = self.reward_amount;
+                        if self.reward_on == 1 && self.reward_balance > payout && self.env().balance() > min
+                        && self.claim_counter.checked_rem_euclid(self.reward_interval) == Some(0) {
+                            // payout
+                            if self.env().transfer(caller, payout).is_err() {
+                                return Err(Error::PayoutFailed);
+                            }
+                            // update reward_balance
+                            self.reward_balance = self.reward_balance.saturating_sub(payout);
+                            // update reward_payouts
+                            self.reward_payouts = self.reward_payouts.saturating_add(payout);
+                            // emit an event to register the reward to the chain
+                            Self::env().emit_event(AccountRewardedMessaging {
+                                claimant: caller,
+                                reward: payout
+                            });
+                        }
+                        // END REWARD PROGRAM ACTIONS
+                    }
+                    else {
+                        return Err(Error::StorageFull);
+                    }
                 }
-                Ok(())
             }
             else {
                 // send an error
                 return Err(Error::NonexistentGroup);
             }
+
+            Ok(())
             
         }
 
 
-        // 12 🟢 Delete A Single Group Message
+        // 11 🟢 Delete A Single Group Message
         #[ink(message)]
         pub fn delete_single_message_to_group (&mut self, message_id_to_delete: Hash) -> Result<(), Error> {
             // does this message exist? If it does, proceed
@@ -1193,40 +1223,48 @@ mod geode_messaging {
                 let caller = Self::env().caller();
                 let current_details = self.group_message_details.get(&message_id_to_delete).unwrap_or_default();
 
-                // remove this message from sent_messages_to_group: Mapping<(AccountId, Hash), HashVector>
-                // get the message hash vector from the caller to the group
-                let group_id = current_details.to_list_id;
-                let mut all_sent = self.sent_messages_to_group.get((&caller, &group_id)).unwrap_or_default();
-                // retain all but this message in that vector
-                all_sent.hashvector.retain(|value| *value != message_id_to_delete);
-                // update the sent_messages_to_group mapping
-                self.sent_messages_to_group.insert((&caller, &group_id), &all_sent);
+                // is this your message to delete?
+                if current_details.from_acct != caller {
+                    // error - not yours to delete
+                    return Err(Error::MessageNotFound);
+                }
+                else {
+                    //  proceed...
+                    // remove this message from sent_messages_to_group: Mapping<(AccountId, Hash), HashVector>
+                    // get the message hash vector from the caller to the group
+                    let group_id = current_details.to_list_id;
+                    let mut all_sent = self.sent_messages_to_group.get((&caller, &group_id)).unwrap_or_default();
+                    // retain all but this message in that vector
+                    all_sent.hashvector.retain(|value| *value != message_id_to_delete);
+                    // update the sent_messages_to_group mapping
+                    self.sent_messages_to_group.insert((&caller, &group_id), &all_sent);
 
-                // remove this message from all_messages_to_group: Mapping<Hash, HashVector>
-                // get all the messages to this group
-                let mut messages = self.all_messages_to_group.get(&group_id).unwrap_or_default();
-                // remove this message id from the hashvector by retaining everything else
-                messages.hashvector.retain(|value| *value != message_id_to_delete);
-                // update the map
-                self.all_messages_to_group.insert(&group_id, &messages);
+                    // remove this message from all_messages_to_group: Mapping<Hash, HashVector>
+                    // get all the messages to this group
+                    let mut messages = self.all_messages_to_group.get(&group_id).unwrap_or_default();
+                    // remove this message id from the hashvector by retaining everything else
+                    messages.hashvector.retain(|value| *value != message_id_to_delete);
+                    // update the map
+                    self.all_messages_to_group.insert(&group_id, &messages);
 
-                // remove this message id from the group_message_details: Mapping<Hash, ListMessageDetails> map
-                self.group_message_details.remove(message_id_to_delete); 
-
-                Ok(())
+                    // remove this message id from the group_message_details: Mapping<Hash, ListMessageDetails> map
+                    self.group_message_details.remove(message_id_to_delete); 
+                }
             }
             else {
                 return Err(Error::MessageNotFound);
             }
+
+            Ok(())
         }
 
 
-        // 13 🟢 Delete All Messages Sent To A Group
+        // 12 🟢 Delete All Messages Sent To A Group
         #[ink(message)]
         pub fn delete_all_messages_to_group (&mut self, delete_my_messages_to_group_id: Hash) -> Result<(), Error> {
             // does this group exist? If it does, proceed
             let groupid = delete_my_messages_to_group_id;
-            if self.groups.contains(&groupid) {
+            if self.group_details.contains(&groupid) {
                 let caller = Self::env().caller();
                 // get the list of message IDs from this caller to the groupid
                 let all_sent = self.sent_messages_to_group.get((&caller, &groupid)).unwrap_or_default();
@@ -1243,16 +1281,16 @@ mod geode_messaging {
 
                 // update the all_messages_to_group mapping
                 self.all_messages_to_group.insert(&groupid, &allmessagestogroup);              
-
-                Ok(())
             }
             else {
                 return Err(Error::NonexistentGroup);
             }
+
+            Ok(())
         }
 
 
-        // 14 🟢 Leave A Group
+        // 13 🟢 Leave A Group
         #[ink(message)]
         pub fn leave_a_group (&mut self, group_id_to_leave: Hash) -> Result<(), Error> {
             // get the vector of subscribed groups for this caller
@@ -1269,6 +1307,8 @@ mod geode_messaging {
                 let mut current_details = self.group_details.get(&group_id_to_leave).unwrap_or_default();
                 // remove the caller from the group_accounts vector
                 current_details.group_accounts.retain(|value| *value != caller);
+                // subtract one from the subscriber count
+                current_details.subscribers = current_details.subscribers.saturating_sub(1);
                 // update the group details map
                 self.group_details.insert(&group_id_to_leave, &current_details);
 
@@ -1282,52 +1322,80 @@ mod geode_messaging {
         }
 
 
-        // 15 🟢 Update Group Settings
+        // 14 🟢 Update Group Settings
         #[ink(message)]
         pub fn update_group_settings (&mut self, 
             group_id: Hash,
-            group_name: Vec<u8>,
             hide_from_search: bool,
             description: Vec<u8>,
         ) -> Result<(), Error> {
-            // set up the caller
-            let caller = Self::env().caller();
-            // get the group details
-            let details = self.group_details.get(&group_id).unwrap_or_default();
-            // make sure the caller is the group owner (first accoutn in the accounts vector)
-            let owner = details.group_accounts[0];
-            if caller == owner {
-                // set up updated details
-                let update = GroupDetails {
-                    group_id: group_id,
-                    group_name: group_name,
-                    hide_from_search: hide_from_search,
-                    description: description,
-                    group_accounts: details.group_accounts,
-                };
-                // update the map group_details: Mapping<Hash, GroupDetails>
-                self.group_details.insert(&group_id, &update);
+            // if the input data is too large, send an error
+            if description.len() > 600 {
+                return Err(Error::DataTooLarge);
+            }
+            // make sure the group exists
+            if self.group_details.contains(group_id) {
+                // set up the caller
+                let caller = Self::env().caller();
+                // get the group details
+                let details = self.group_details.get(&group_id).unwrap_or_default();
+                // make sure the caller is the group owner (first account in the accounts vector)
+                let owner = details.group_accounts[0];
+                let name = details.group_name.clone();
+                if caller == owner {
+                    // set up updated details
+                    let update = GroupDetails {
+                        group_id: group_id,
+                        group_name: details.group_name,
+                        hide_from_search: hide_from_search,
+                        description: description.clone(),
+                        group_accounts: details.group_accounts,
+                        subscribers: details.subscribers,
+                    };
+                    // update the map group_details: Mapping<Hash, GroupDetails>
+                    if self.group_details.try_insert(&group_id, &update).is_err() {
+                        return Err(Error::DataTooLarge);
+                    }
 
-                Ok(())
+                    // Emit an event to register the group to the chain
+                    // but only if the group is not hidden
+                    if hide_from_search == false {
+                        Self::env().emit_event(NewPublicGroup {
+                            from: caller,
+                            group_id: group_id,
+                            group_name: name,
+                            description: description,
+                        });
+                    }
+
+                }
+                else {
+                    return Err(Error::NonexistentGroup);
+                }
             }
             else {
                 return Err(Error::NonexistentGroup);
             }
+
+            Ok(())
         }
 
 
-
-        // 16 🟢 Send A Message To List
+        // 15 🟢 Send A Message To List 🏆
         #[ink(message)]
         pub fn send_message_to_list (&mut self, 
             to_list_id: Hash,
             new_message: Vec<u8>, 
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
+            // if the input data is too large, send an error
+            if new_message.len() > 600 || file_url.len() > 600 {
+                return Err(Error::DataTooLarge);
+            }
             // Does this list exist? and do you own it? If so, proceed
             let caller = Self::env().caller();
             let owned_lists = self.account_owned_open_lists.get(&caller).unwrap_or_default();
-            if self.open_lists.contains(&to_list_id) && owned_lists.hashvector.contains(&to_list_id) {
+            if self.open_list_details.contains(&to_list_id) && owned_lists.hashvector.contains(&to_list_id) {
                 // set up clones
                 let new_message_clone = new_message.clone();
 
@@ -1353,18 +1421,50 @@ mod geode_messaging {
                     timestamp: self.env().block_timestamp(),
                 };
 
-                // update list_message_details: Mapping<Hash, ListMessageDetails>
-                self.list_message_details.insert(&new_message_id, &new_details);
-
                 // update sent_messages_to_list: Mapping<Hash, HashVector>
                 // get the messages vector for this list
                 let mut current_messages = self.sent_messages_to_list.get(&to_list_id).unwrap_or_default();
-                // add this message to the messages vector for this account
+                // if the storage is full, remove the oldest message 
+                if current_messages.hashvector.len() > 14 {
+                    // kick out the oldest message from list_messages_details
+                    let oldest = current_messages.hashvector[0];
+                    self.list_message_details.remove(oldest);
+                    // kick out the oldest message from list_message_details
+                    current_messages.hashvector.remove(0);
+                }
+
+                // add this message to the messages vector for this list
                 current_messages.hashvector.push(new_message_id);
                 // update the sent_messages_to_list map
                 self.sent_messages_to_list.insert(&to_list_id, &current_messages);
 
-                Ok(())
+                // update list_message_details: Mapping<Hash, ListMessageDetails>
+                if self.list_message_details.try_insert(&new_message_id, &new_details).is_err() {
+                    return Err(Error::DataTooLarge);
+                }    
+
+                // REWARD PROGRAM ACTIONS... update the claim_counter 
+                self.claim_counter = self.claim_counter.wrapping_add(1);
+                // IF conditions are met THEN payout a reward
+                let min = self.reward_amount.saturating_add(10);
+                let payout: Balance = self.reward_amount;
+                if self.reward_on == 1 && self.reward_balance > payout && self.env().balance() > min
+                && self.claim_counter.checked_rem_euclid(self.reward_interval) == Some(0) {
+                    // payout
+                    if self.env().transfer(caller, payout).is_err() {
+                        return Err(Error::PayoutFailed);
+                    }
+                    // update reward_balance
+                    self.reward_balance = self.reward_balance.saturating_sub(payout);
+                    // update reward_payouts
+                    self.reward_payouts = self.reward_payouts.saturating_add(payout);
+                    // emit an event to register the reward to the chain
+                    Self::env().emit_event(AccountRewardedMessaging {
+                        claimant: caller,
+                        reward: payout
+                    });
+                }
+                // END REWARD PROGRAM ACTIONS
 
             }
             // if the list does not exist, or you do not own it, send an error
@@ -1372,66 +1472,117 @@ mod geode_messaging {
                 return Err(Error::NonexistentList);
             }
 
+            Ok(())
         }
 
 
-        // 17 🟢 Make A New List (public or private)
+        // 16 🟢 Make A New List (public or private) 🏆
         #[ink(message)]
         pub fn make_a_new_list (&mut self, 
             new_list_name: Vec<u8>,
             hide_from_search: bool,
             description: Vec<u8>,
         ) -> Result<(), Error> {
-            // set up clones
-            let list_name_clone = new_list_name.clone();
-            // hash the list name
-            let encodable = new_list_name; // Implements `scale::Encode`
-            let mut new_list_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
-            ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_list_id_u8);
-            let new_list_id: Hash = Hash::from(new_list_id_u8);
+            // if the input data is too large, send an error
+            if new_list_name.len() > 100 || description.len() > 600 {
+                return Err(Error::DataTooLarge);
+            }
+            // does this caller have room for another open list?
+            let caller = Self::env().caller();
+            let mut current_owned = self.account_owned_open_lists.get(&caller).unwrap_or_default();
+            let mut current_lists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
+            if current_owned.hashvector.len() < 20 && current_lists.hashvector.len() < 20 {
+                // proceed...
+                // set up clones
+                let list_name_clone = new_list_name.clone();
+                let list_name_clone2 = new_list_name.clone();
+                let list_description_clone = description.clone();
 
-            // is the list name already taken?
-            if self.open_lists.contains(&new_list_id) {
-                // send an error
-                return Err(Error::ListNameTaken);
+                // hash the list name
+                let encodable = new_list_name; // Implements `scale::Encode`
+                let mut new_list_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
+                ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_list_id_u8);
+                let new_list_id: Hash = Hash::from(new_list_id_u8);
+
+                // is the list name already taken?
+                if self.open_list_details.contains(&new_list_id) {
+                    // send an error
+                    return Err(Error::ListNameTaken);
+                }
+                else {
+                    // proceed to set up the list details
+                    // make the caller the first subscriber
+                    let new_list = OpenListDetails {
+                        list_id: new_list_id,
+                        owner: caller,
+                        list_name: list_name_clone,
+                        hide_from_search: hide_from_search,
+                        description: description,
+                        list_accounts: 1,
+                    };
+
+                    // add this new list to open_list_details: Mapping<Hash, OpenListDetails>
+                    if self.open_list_details.try_insert(&new_list_id, &new_list).is_err() {
+                        return Err(Error::DataTooLarge);
+                    }        
+
+                    // add this new list to open_lists: Vec<Hash>
+                    self.open_lists.push(&new_list_id);
+
+                    // add this new list ID to account_owned_open_lists: Mapping<AccountID, HashVector>
+                    current_owned.hashvector.push(new_list_id);
+                    self.account_owned_open_lists.insert(&caller, &current_owned);
+
+                    // add this new list ID to account_subscribed_lists: Mapping<AccountID, HashVector>
+                    // (subscribe to your own list)
+                    current_lists.hashvector.push(new_list_id);
+                    self.account_subscribed_lists.insert(&caller, &current_lists); 
+
+                    // Emit an event to register the list to the chain
+                    // but only if the list is not hidden
+                    if hide_from_search == false {
+                        Self::env().emit_event(NewPublicList {
+                            list_id: new_list_id,
+                            owner: caller,
+                            list_name: list_name_clone2,
+                            description: list_description_clone,
+                        });
+                    }     
+
+                    // REWARD PROGRAM ACTIONS... update the claim_counter 
+                    self.claim_counter = self.claim_counter.wrapping_add(1);
+                    // IF conditions are met THEN payout a reward
+                    let min = self.reward_amount.saturating_add(10);
+                    let payout: Balance = self.reward_amount;
+                    if self.reward_on == 1 && self.reward_balance > payout && self.env().balance() > min
+                    && self.claim_counter.checked_rem_euclid(self.reward_interval) == Some(0) {
+                        // payout
+                        if self.env().transfer(caller, payout).is_err() {
+                            return Err(Error::PayoutFailed);
+                        }
+                        // update reward_balance
+                        self.reward_balance = self.reward_balance.saturating_sub(payout);
+                        // update reward_payouts
+                        self.reward_payouts = self.reward_payouts.saturating_add(payout);
+                        // emit an event to register the reward to the chain
+                        Self::env().emit_event(AccountRewardedMessaging {
+                            claimant: caller,
+                            reward: payout
+                        });
+                    }
+                    // END REWARD PROGRAM ACTIONS
+                }
             }
             else {
-                // proceed to set up the list details
-                // make the caller the first subscriber
-                let caller = Self::env().caller();
-                let new_list = OpenListDetails {
-                    list_id: new_list_id,
-                    owner: caller,
-                    list_name: list_name_clone,
-                    hide_from_search: hide_from_search,
-                    description: description,
-                    list_accounts: vec![caller],
-                };
-
-                // add this new list to open_list_details: Mapping<Hash, OpenListDetails>
-                self.open_list_details.insert(&new_list_id, &new_list);
-
-                // add this new list to open_lists: Vec<Hash>
-                self.open_lists.push(new_list_id);
-
-                // add this new list ID to account_owned_open_lists: Mapping<AccountID, HashVector>
-                let mut current_owned = self.account_owned_open_lists.get(&caller).unwrap_or_default();
-                current_owned.hashvector.push(new_list_id);
-                self.account_owned_open_lists.insert(&caller, &current_owned);
-
-                // add this new list ID to account_subscribed_lists: Mapping<AccountID, HashVector>
-                // (subscribe to your own list)
-                let mut current_lists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
-                current_lists.hashvector.push(new_list_id);
-                self.account_subscribed_lists.insert(&caller, &current_lists);
-
-                Ok(())                
+                // storage full error
+                return Err(Error::StorageFull);
             }
 
+            Ok(())
         }
 
 
-        // 18 🟢 Delete A Single List Message
+        // 17 🟢 Delete A Single List Message
         #[ink(message)]
         pub fn delete_single_message_to_list (&mut self, message_id_to_delete: Hash) -> Result<(), Error> {
             // does this message exist? and are you the sender? if so, proceed
@@ -1459,7 +1610,7 @@ mod geode_messaging {
         }
 
 
-        // 19 🟢 Delete An Open List (and all of its messages and subscribers)
+        // 18 🟢 Delete An Open List (and all of its messages and details) 
         #[ink(message)]
         pub fn delete_an_open_list (&mut self, 
             delete_list_id: Hash
@@ -1467,31 +1618,18 @@ mod geode_messaging {
             // does this list exist? and are you the owner? if so, proceed
             let caller = Self::env().caller();
             let owned_lists = self.account_owned_open_lists.get(&caller).unwrap_or_default();
-            if self.open_lists.contains(&delete_list_id) && owned_lists.hashvector.contains(&delete_list_id) {
+            if self.open_list_details.contains(&delete_list_id) && owned_lists.hashvector.contains(&delete_list_id) {
 
-                // get the details for this list
-                let details = self.open_list_details.get(&delete_list_id).unwrap_or_default();
-
-                // unsubscribe all accounts currently following this list using
+                // unsubscribe the list owner
                 // account_subscribed_lists: Mapping<AccountID, HashVector>
-                for subscriber in details.list_accounts {
-                    // get their account_subscribed_lists
-                    let mut lists = self.account_subscribed_lists.get(&subscriber).unwrap_or_default();
-                    // remove this list
-                    lists.hashvector.retain(|value| *value != delete_list_id);
-                    // update the mapping for that account
-                    self.account_subscribed_lists.insert(&subscriber, &lists);
-                }
+                // get their account_subscribed_lists
+                let mut lists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
+                // remove this list
+                lists.hashvector.retain(|value| *value != delete_list_id);
+                // update the mapping for that account
+                self.account_subscribed_lists.insert(&caller, &lists);
 
                 // delete all the messages sent to this list
-                // get the vector of messages sent to this list
-                let sent = self.sent_messages_to_list.get(&delete_list_id).unwrap_or_default();
-                // for each message
-                for message in sent.hashvector {
-                    // remove it from list_message_details: Mapping<Hash, ListMessageDetails>
-                    self.list_message_details.remove(message);
-                }
-                // then remove the list ID from sent_messages_to_list: Mapping<Hash, HashVector>
                 self.sent_messages_to_list.remove(delete_list_id);
 
                 // remove this list from account_owned_open_lists: Mapping<AccountID, HashVector>
@@ -1504,8 +1642,10 @@ mod geode_messaging {
                 // remove the list ID from open_list_details: Mapping<Hash, OpenListDetails>
                 self.open_list_details.remove(delete_list_id);
 
-                // remove the list ID from open_lists: Vec<Hash>
-                self.open_lists.retain(|value| *value != delete_list_id);
+                //// event here to announce the list is deleted
+                Self::env().emit_event(ListDeleted {
+                    list_id: delete_list_id,
+                });
 
                 Ok(())                
             }
@@ -1517,11 +1657,11 @@ mod geode_messaging {
         }
 
 
-        // 20 🟢 Join An Open List
+        // 19 🟢 Join An Open List 🏆
         #[ink(message)]
         pub fn join_an_open_list (&mut self, list_id: Hash) -> Result<(), Error> {
-            // does this list exist in open_lists: Vec<Hash>? if so, proceed
-            if self.open_lists.contains(&list_id) {
+            // does this list exist? if so, proceed
+            if self.open_list_details.contains(&list_id) {
                 let caller = Self::env().caller();
                 // get the caller's currently subscribed lists
                 let mut lists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
@@ -1531,33 +1671,63 @@ mod geode_messaging {
                 }
                 // if the caller is not yet subscribed, proceed
                 else {
-                    // add the list to the caller's account_subscribed_lists: Mapping<AccountID, HashVector>
-                    lists.hashvector.push(list_id);
-                    self.account_subscribed_lists.insert(&caller, &lists);
-                    // add the caller to the list_accounts in open_list_details: Mapping<Hash, OpenListDetails>
-                    let mut details = self.open_list_details.get(&list_id).unwrap_or_default();
-                    details.list_accounts.push(caller);
-                    self.open_list_details.insert(&list_id, &details);
+                    // check if there is space in storage to subscribe
+                    if lists.hashvector.len() < 20 {
+                        
+                        // add the list to the caller's account_subscribed_lists: Mapping<AccountID, HashVector>
+                        lists.hashvector.push(list_id);
+                        self.account_subscribed_lists.insert(&caller, &lists);
 
-                    Ok(())
+                        // add the caller to the list_accounts count in open_list_details: Mapping<Hash, OpenListDetails>
+                        let mut details = self.open_list_details.get(&list_id).unwrap_or_default();
+                        details.list_accounts = details.list_accounts.saturating_add(1);
+                        self.open_list_details.insert(&list_id, &details);
+
+                        // REWARD PROGRAM ACTIONS... update the claim_counter 
+                        self.claim_counter = self.claim_counter.wrapping_add(1);
+                        // IF conditions are met THEN payout a reward
+                        let min = self.reward_amount.saturating_add(10);
+                        let payout: Balance = self.reward_amount;
+                        if self.reward_on == 1 && self.reward_balance > payout && self.env().balance() > min
+                        && self.claim_counter.checked_rem_euclid(self.reward_interval) == Some(0) {
+                            // payout
+                            if self.env().transfer(caller, payout).is_err() {
+                                return Err(Error::PayoutFailed);
+                            }
+                            // update reward_balance
+                            self.reward_balance = self.reward_balance.saturating_sub(payout);
+                            // update reward_payouts
+                            self.reward_payouts = self.reward_payouts.saturating_add(payout);
+                            // emit an event to register the reward to the chain
+                            Self::env().emit_event(AccountRewardedMessaging {
+                                claimant: caller,
+                                reward: payout
+                            });
+                        }
+                        // END REWARD PROGRAM ACTIONS
+                    }
+                    else {
+                        // error, no more room
+                        return Err(Error::StorageFull);
+                    }
                 }
-
             }
             // if the list does not exist, send an error
             else {
                 return Err(Error::NonexistentList);
             }
 
+            Ok(())
         }
 
 
-        // 21 🟢 Unsubscribe From An Open List
+        // 20 🟢 Unsubscribe From An Open List
         #[ink(message)]
         pub fn unsubscribe_from_open_list (&mut self, 
             list_id: Hash
         ) -> Result<(), Error> {
-            // does this list exist in open_lists: Vec<Hash>? if so, proceed
-            if self.open_lists.contains(&list_id) {
+            // does this list exist? if so, proceed
+            if self.open_list_details.contains(&list_id) {
                 let caller = Self::env().caller();
                 // get the caller's currently subscribed lists
                 let mut lists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
@@ -1570,295 +1740,183 @@ mod geode_messaging {
                     // update the mapping
                     self.account_subscribed_lists.insert(&caller, &lists);
 
-                    // remove the caller account from list_accounts in 
-                    // open_list_details: Mapping<Hash, OpenListDetails>
+                    // remove the caller account from list_accounts count 
+                    // in open_list_details: Mapping<Hash, OpenListDetails>
                     // get the details for this list
                     let mut details = self.open_list_details.get(&list_id).unwrap_or_default(); 
                     // remove the caller from the list_accounts
-                    details.list_accounts.retain(|value| *value != caller);
+                    details.list_accounts = details.list_accounts.saturating_sub(1);
                     // update the mapping
                     self.open_list_details.insert(&list_id, &details);
-
-                    Ok(())
                 }
                 // if the caller is not currently subscribed, send an error
                 else {
                     return Err(Error::NonexistentList);
                 }
-
             }        
             // if the list does not exist, send an error
             else {
                 return Err(Error::NonexistentList);
             }
 
+            Ok(())
         }
 
 
-        // 22 🟢 Send A Message To Paid List
+        // 21 🟢 Send A Paid Message 🏆
         #[ink(message, payable)]
-        #[openbrush::modifiers(non_reentrant)]
-        pub fn send_message_to_paid_list (&mut self, 
-            to_list_id: Hash,
+        pub fn send_paid_message (&mut self, 
+            to_account: AccountId,
             new_message: Vec<u8>,
             file_url: Vec<u8>,
         ) -> Result<(), Error> {
-
-            // COLLECT PAYMENT FROM THE CALLER
+            // if the input data is too large, send an error
+            if new_message.len() > 600 || file_url.len() > 600 {
+                return Err(Error::DataTooLarge);
+            }
+            let caller = Self::env().caller();
+            
+            // COLLECT PAYMENT FROM THE CALLER (this is your bid)
             // the 'payable' tag on this message allows the user to send any amount
             let staked: Balance = self.env().transferred_value();
             
-            // Does this list exist? and do you own it? If so, proceed
-            let caller = Self::env().caller();
-            let owned_lists = self.account_owned_paid_lists.get(&caller).unwrap_or_default().hashvector;
-            if owned_lists.contains(&to_list_id) {
-                
-                // total the fees required to send to this list              
-                // get the list_accounts from paid_list_details: Mapping<Hash, PaidListDetails>
-                let listaccounts = self.paid_list_details.get(&to_list_id).unwrap_or_default().list_accounts;
-                let mut total_fee: Balance = 0;
-                // for each acccount on the paid list...
-                for inbox in &listaccounts {
-                    // get their inbox fee from account_settings: Mapping<AccountID, Settings>
-                    let fee: Balance = self.account_settings.get(&inbox).unwrap_or_default().inbox_fee;
-                    // add it to the total_fee
-                    total_fee += fee;
-                }
+            // get the minimum fee for the to_account
+            let min_fee: Balance = self.account_settings.get(&to_account).unwrap_or_default().inbox_fee;
+            // get the recipient's blocked accounts 
+            let blocked = self.account_blocked_accounts.get(&to_account).unwrap_or_default();
 
-                // if staked is more than total_fee, proceed
-                if staked > total_fee {
-
-                    // set up clones
-                    let new_message_clone = new_message.clone();
-                    // set up the data that will go into the new_message_id hash
-                    let new_timestamp = self.env().block_timestamp();
-                    // create the new_message_id by hashing the above data
-                    let encodable = (caller, to_list_id, new_message, new_timestamp); // Implements `scale::Encode`
-                    let mut new_message_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
-                    ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_message_id_u8);
-                    let new_message_id: Hash = Hash::from(new_message_id_u8);
-
-                    // SET UP THE MESSAGE DETAILS FOR THE NEW MESSAGE
-                    let fromusername = self.account_settings.get(&caller).unwrap_or_default().username;
-                    let listname = self.paid_list_details.get(&to_list_id).unwrap_or_default().list_name;
-                    let new_details = ListMessageDetails {
-                        message_id: new_message_id,
-                        from_acct: Self::env().caller(),
-                        username: fromusername,
-                        to_list_id: to_list_id,
-                        to_list_name: listname,
-                        message: new_message_clone,  
-                        file_url: file_url,
-                        timestamp: self.env().block_timestamp(),
-                    };
-
-                    // add the message to paid_list_message_details: Mapping<Hash, ListMessageDetails>
-                    self.paid_list_message_details.insert(&new_message_id, &new_details);
-
-                    // add the message ID to sent_messages_to_paid_list: Mapping<Hash, HashVector>
-                    // get the messages vector for this list
-                    let mut current_messages = self.sent_messages_to_paid_list.get(&to_list_id).unwrap_or_default();
-                    // add this message to the messages vector for this list
-                    current_messages.hashvector.push(new_message_id);
-                    // update the sent_messages_to_paid_list map
-                    self.sent_messages_to_paid_list.insert(&to_list_id, &current_messages);
-
-                    // PAY EACH ACCOUNT ON THE PAID LIST 
-                    for inbox in &listaccounts {
-                        // get their inbox fee from account_settings: Mapping<AccountID, Settings>
-                        let fee: Balance = self.account_settings.get(&inbox).unwrap_or_default().inbox_fee;
-                        // send them their inbox_fee
-                        //self.env().transfer(*inbox, fee).expect("payout failed");
-                        if self.env().transfer(*inbox, fee).is_err() {
-                            return Err(Error::PayoutFailed);
-                        }
-                    }
-                    // then pay the caller what is left from their stake after paying the list
-                    let leftovers: Balance = staked - total_fee;
-                    if leftovers > 0 {
-                        //self.env().transfer(caller, leftovers).expect("payout failed");
-                        if self.env().transfer(caller, leftovers).is_err() {
-                            return Err(Error::PayoutFailed);
-                        }
-                    }
-
-                    Ok(())
-                }
-                // if staked is less than or = to the total fee, send an error
-                else {
-                    return Err(Error::InsufficientStake);
-                }
-            }
-            // if the list does not exist, or you do not own it, send an error
-            else {
-                return Err(Error::NonexistentList);
-            }
-        }
-
-
-        // 23 🟢 Make A Paid List
-        #[ink(message)]
-        pub fn make_a_new_paid_list (&mut self, 
-            new_list_name: Vec<u8>,
-            description: Vec<u8>,
-            initial_accounts: Vec<AccountId>,
-        ) -> Result<(), Error> {
-            let caller = Self::env().caller();
-            // set up clones
-            let list_name_clone = new_list_name.clone();
-            // hash the list name and owner
-            let encodable = (caller, new_list_name); // Implements `scale::Encode`
-            let mut new_list_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
-            ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_list_id_u8);
-            let new_list_id: Hash = Hash::from(new_list_id_u8);
-
-            // does the caller already have a list by this name?
-            let mut paid_lists = self.account_owned_paid_lists.get(&caller).unwrap_or_default();
-            if paid_lists.hashvector.contains(&new_list_id) {
-                // send an error
-                return Err(Error::ListNameTaken);
+            // if the staked is less than min_fee, OR if the sender is blocked, send error 
+            if staked < min_fee || blocked.accountvector.contains(&caller) {
+                return Err(Error::CannotSendPaidMessage);
             }
             else {
-                // calculate the total fee
-                let mut totalfee: Balance = 0;
-                for acct in &initial_accounts {
-                    // get their inbox fee from account_settings: Mapping<AccountID, Settings>
-                    let fee: Balance = self.account_settings.get(&acct).unwrap_or_default().inbox_fee;
-                    // add it to the total_fee
-                    totalfee += fee;
-                    // update paid_lists_with_account: Mapping<AccountID, HashVector>
-                    let mut lists = self.paid_lists_with_account.get(&acct).unwrap_or_default();
-                    lists.hashvector.push(new_list_id);
-                    self.paid_lists_with_account.insert(&acct, &lists);
+                // get the current paid inbox for this recipient
+                let mut inbox = self.account_paid_inbox.get(&to_account).unwrap_or_default();
+
+                // if the inbox is full (has 400 messages)..
+                if inbox.hashvector.len() > 399 {
+                    // then bidding becomes competitive...
+                    // get the current low bidder
+                    let first_hash = inbox.hashvector[0];
+                    // get the details of the first paid message
+                    let firstdetails = self.paid_message_details.get(first_hash).unwrap_or_default();
+                    let mut low_bid: Balance = firstdetails.bid;
+                    let mut low_index: usize = 0;
+                    let mut low_bid_acct: AccountId = firstdetails.from_acct;
+                    for (i, ad) in inbox.hashvector.iter().enumerate() {
+                        // get the bid and index for each and compare, keeping the lowest
+                        let thisbid: Balance = self.paid_message_details.get(ad).unwrap_or_default().bid;
+                        let thissender: AccountId = self.paid_message_details.get(ad).unwrap_or_default().from_acct;
+                        if thisbid < low_bid { 
+                            low_bid = thisbid;
+                            low_index = i;
+                            low_bid_acct = thissender;
+                        }
+                    }
+                    // if staked is higher than the lowest current bid...
+                    if staked > low_bid {
+                        // kick out the low bidder 
+                        inbox.hashvector.remove(low_index);
+                        // make sure the contract has enough funds
+                        if self.env().balance() > low_bid.saturating_add(11) {
+                            // refund the low bidder their stake
+                            if self.env().transfer(low_bid_acct, low_bid).is_err() {
+                                return Err(Error::PayoutFailed);
+                            }
+                        }
+                    }
                 }
-                // set up the list details
-                let new_list = PaidListDetails {
-                    list_id: new_list_id,
-                    owner: caller,
-                    list_name: list_name_clone,
-                    total_fee: totalfee,
-                    description: description,
-                    list_accounts: initial_accounts,
+
+                // if the inbox has space, or this bid won, add this message to the paid inbox...
+                // set up clones
+                let new_message_clone = new_message.clone();
+                // set up the data that will go into the new_message_id hash
+                let new_timestamp = self.env().block_timestamp();
+                // create the new_message_id by hashing the above data
+                let encodable = (caller, new_message, new_timestamp); // Implements `scale::Encode`
+                let mut new_message_id_u8 = <Sha2x256 as HashOutput>::Type::default(); // 256-bit buffer
+                ink::env::hash_encoded::<Sha2x256, _>(&encodable, &mut new_message_id_u8);
+                let new_message_id: Hash = Hash::from(new_message_id_u8);
+
+                // SET UP THE MESSAGE DETAILS FOR THE NEW MESSAGE
+                let fromusername = self.account_settings.get(&caller).unwrap_or_default().username;
+                let new_details = PaidMessageDetails {
+                    message_id: new_message_id,
+                    from_acct: Self::env().caller(),
+                    from_username: fromusername,
+                    to_acct: to_account,
+                    message: new_message_clone,  
+                    file_url: file_url,
+                    timestamp: self.env().block_timestamp(),
+                    bid: staked,
                 };
 
-                // add this new list to paid_list_details: Mapping<Hash, PaidListDetails>
-                self.paid_list_details.insert(&new_list_id, &new_list);
+                // add the message to paid_message_details: Mapping<Hash, PaidMessageDetails>
+                self.paid_message_details.insert(&new_message_id, &new_details);
 
-                // add this new list ID to account_owned_paid_lists: Mapping<AccountID, HashVector>
-                paid_lists.hashvector.push(new_list_id);
-                self.account_owned_paid_lists.insert(&caller, &paid_lists);
+                // add the message to the recipient's paid inbox
+                inbox.hashvector.push(new_message_id);
+                self.account_paid_inbox.insert(&to_account, &inbox);
 
-                Ok(())                
-            }
-        }
-
-
-        // 24 🟢 Delete Paid List (and ALL of its messages ever sent)
-        #[ink(message)]
-        pub fn delete_paid_list (&mut self, delete_this_list: Hash) -> Result<(), Error> {
-            // do you own this paid list? if so, proceed
-            let caller = Self::env().caller();
-            let owned_lists = self.account_owned_paid_lists.get(&caller).unwrap_or_default();
-            if owned_lists.hashvector.contains(&delete_this_list) {
-
-                // remove all the messages sent to this list...
-                // get the vector of messages sent to this list
-                let sent = self.sent_messages_to_paid_list.get(&delete_this_list).unwrap_or_default();
-                // for each message...
-                for message in sent.hashvector {
-                    // remove it from paid_list_message_details: Mapping<Hash, ListMessageDetails>
-                    self.paid_list_message_details.remove(message);
+                // add the recipient to the caller's allowed list if they are not already there
+                // get the caller's allowed accounts vector
+                let mut allowed = self.account_allowed.get(&caller).unwrap_or_default();
+                if allowed.accountvector.contains(&to_account) {
+                    // do nothing
                 }
-                // then remove the list ID from sent_messages_to_paid_list: Mapping<Hash, HashVector>
-                self.sent_messages_to_paid_list.remove(delete_this_list);
-
-                // for each account on the list, remove the list ID from
-                // paid_lists_with_account: Mapping<AccountID, HashVector> 
-                let details = self.paid_list_details.get(&delete_this_list).unwrap_or_default();
-                let listaccts = details.list_accounts;
-                for acct in listaccts {
-                    let mut paidlists = self.paid_lists_with_account.get(&acct).unwrap_or_default();
-                    paidlists.hashvector.retain(|value| *value != delete_this_list);
-                    self.paid_lists_with_account.insert(&acct, &paidlists);
+                else {
+                    // check that there is space
+                    if allowed.accountvector.len() < 60 {
+                        // add this recipient
+                        allowed.accountvector.push(to_account);
+                    }
+                    else {
+                        // send error that storage is full
+                        return Err(Error::StorageFull);
+                    }
+                    
                 }
 
-                // remove the list ID from paid_list_details: Mapping<Hash, PaidListDetails>
-                self.paid_list_details.remove(delete_this_list);
+                // REWARD PROGRAM ACTIONS... update the claim_counter 
+                self.claim_counter = self.claim_counter.wrapping_add(1);
+                // IF conditions are met THEN payout a reward
+                let min = self.reward_amount.saturating_add(10);
+                let payout: Balance = self.reward_amount;
+                if self.reward_on == 1 && self.reward_balance > payout && self.env().balance() > min
+                && self.claim_counter.checked_rem_euclid(self.reward_interval) == Some(0) {
+                    // payout
+                    if self.env().transfer(caller, payout).is_err() {
+                        return Err(Error::PayoutFailed);
+                    }
+                    // update reward_balance
+                    self.reward_balance = self.reward_balance.saturating_sub(payout);
+                    // update reward_payouts
+                    self.reward_payouts = self.reward_payouts.saturating_add(payout);
+                    // emit an event to register the reward to the chain
+                    Self::env().emit_event(AccountRewardedMessaging {
+                        claimant: caller,
+                        reward: payout
+                    });
+                }
+                // END REWARD PROGRAM ACTIONS
 
-                // remove the list ID from account_owned_paid_lists: Mapping<AccountID, HashVector>
-                let mut ownedlists = self.account_owned_paid_lists.get(&caller).unwrap_or_default();
-                // remove this list
-                ownedlists.hashvector.retain(|value| *value != delete_this_list);
-                // update the mapping for that account
-                self.account_owned_paid_lists.insert(&caller, &ownedlists);
-
-                Ok(())
-            }
-            // if you don't own this paid list, send error
-            else {
-                return Err(Error::NonexistentList);
             }
 
-        }
- 
-
-        // 25 🟢 Block A Paid List
-        #[ink(message)]
-        pub fn block_paid_list (&mut self, list_id_to_block: Hash) -> Result<(), Error> {
-            // Is this list already being blocked? If TRUE, send ERROR
-            let caller = Self::env().caller();
-            let mut current_blocked = self.account_blocked_lists.get(&caller).unwrap_or_default();
-            if current_blocked.hashvector.contains(&list_id_to_block) {
-                return Err(Error::DuplicateBlock);
-            }
-            // Otherwise, update the account_blocked_lists for this caller
-            else {
-                // add the new block to the the vector of lists the caller is blocking
-                current_blocked.hashvector.push(list_id_to_block);
-                // Update (overwrite) the account_blocked_lists: Mapping<AccountID, HashVector> map
-                self.account_blocked_lists.insert(&caller, &current_blocked);
-            }
-            
             Ok(())
         }
 
-
-        // 26 🟢 Unblock A Paid List
-        #[ink(message)]
-        pub fn unblock_paid_list (&mut self, list_id_to_unblock: Hash) -> Result<(), Error> {
-            // Is this account currently being blocked? If TRUE, proceed...
-            let caller = Self::env().caller();
-            let mut current_blocked = self.account_blocked_lists.get(&caller).unwrap_or_default();
-            if current_blocked.hashvector.contains(&list_id_to_unblock) {
-                // remove the unblock from the the vector of lists they are blocking
-                // by keeping everyone other than that list... 
-                current_blocked.hashvector.retain(|value| *value != list_id_to_unblock);
-                // Update (overwrite) the account_blocked_lists map in the storage
-                self.account_blocked_lists.insert(&caller, &current_blocked);
-            }
-            // If the account is not currently being followed, ERROR: Already Not blocked
-            else {
-                return Err(Error::NotBlocked);
-            }
-
-            Ok(())
-        }   
-       
 
         // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         // >>>>>>>>>>>>>>>>>>>>>>>>>> PRIMARY GET MESSAGES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
  
-        // 27 🟢 Get My Inbox
+        // 22 🟢 Get My Inbox - Individual people only (groups and lists are in another message each)
         #[ink(message)]
-        pub fn get_my_inbox(&self) -> MyInbox {
+        pub fn get_my_inbox(&self) -> Vec<ConversationWithAccount> {
             let caller = Self::env().caller();
 
             // set up return structures
-            let myblocked = self.account_blocked_accounts.get(&caller).unwrap_or_default().accountvector;
             let mut peoplevector: Vec<ConversationWithAccount> = Vec::new();
-            let mut groupsvector: Vec<MessagesFromList> = Vec::new();
-            let mut listsvector: Vec<MessagesFromList> = Vec::new();
 
             // GET ALL CONVERSATIONS WITH INDIVIDUAL ALLOWED ACCOUNTS
             // for every account in account_allowed: Mapping<AccountID, AccountVector>
@@ -1893,6 +1951,333 @@ mod geode_messaging {
                 // add the ConversationWithAccount to the Vec<ConversationWithAccount>
                 peoplevector.push(convo_with_account);
             }
+
+            // return the results
+            peoplevector
+        }
+
+
+        // 23 🟢 Get My Paid Inbox 
+        #[ink(message)]
+        pub fn get_my_paid_inbox(&mut self) -> Result<Vec<PaidMessageDetails>, Error>  {
+            let caller = Self::env().caller();
+            let mut my_paid_inbox: Vec<PaidMessageDetails> = Vec::new();
+            let mut payment: Balance = 0;
+
+            // get the caller's inbox
+            let messages = self.account_paid_inbox.get(&caller).unwrap_or_default();
+            
+            // for each message in the hash vector, get the PaidMessageDetails and the bid payment
+            for ad in messages.hashvector.iter() {
+                let details = self.paid_message_details.get(ad).unwrap_or_default();
+                let bid = details.bid;
+                // add it to the results
+                my_paid_inbox.push(details);
+                payment = payment.saturating_add(bid);
+            }
+
+            // pay the caller for picking up their paid inbox
+            if self.env().balance() > payment.saturating_add(11) {
+                if self.env().transfer(caller, payment).is_err() {
+                    return Err(Error::PayoutFailed);
+                }
+            }
+            // if the balance is too low, send error
+            else {
+                return Err(Error::ZeroBalance);
+            }
+
+            // clear the caller's inbox to make room for new paid messages
+            // clear each message details from paid_message_details 
+            for ad in messages.hashvector.iter() {
+                self.paid_message_details.remove(ad);
+            }
+            // clear the inbox itself
+            self.account_paid_inbox.remove(caller);
+
+            // return the results
+            Ok(my_paid_inbox)
+        }
+
+
+        // 24 🟢 Get My Allowed And Blocked Accounts
+        #[ink(message)]
+        pub fn get_my_allowed_and_blocked_accounts(&self) -> AccountsAllowedAndBlocked {
+            let caller = Self::env().caller();
+            let allowed = self.account_allowed.get(&caller).unwrap_or_default().accountvector;
+            let blocked = self.account_blocked_accounts.get(&caller).unwrap_or_default().accountvector;
+
+            // package the results
+            let accounts = AccountsAllowedAndBlocked {
+                allowed_accounts: allowed,
+                blocked_accounts: blocked,
+            };
+            // return the results
+            accounts
+        }
+
+
+        // 25 🟢 Get My Groups
+        #[ink(message)]
+        pub fn get_my_groups(&self) -> Vec<GroupDetails> {
+            let caller = Self::env().caller();
+            let mut mygroups: Vec<GroupDetails> = Vec::new();
+            // get the vector of group ID this caller subscbribes to
+            // from account_subscribed_groups: Mapping<AccountID, HashVector>
+            let groupidvec = self.account_subscribed_groups.get(&caller).unwrap_or_default().hashvector;
+            // for each groupid, get the details from group_details: Mapping<Hash, GroupDetails>
+            for groupid in groupidvec {
+                let details = self.group_details.get(&groupid).unwrap_or_default();
+                mygroups.push(details);
+            }
+            // return the results
+            mygroups
+        }
+
+
+        // 26 🟢 Find Groups By Keyword
+        #[ink(message)]
+        pub fn find_groups_by_keyword(&self, 
+            keywords1: Vec<u8>, 
+            keywords2: Vec<u8>, 
+            keywords3: Vec<u8>) -> GroupSearchResults {
+            // set up results structures
+            let mut resultsvector: Vec<GroupPublicDetails> = Vec::new();
+            // set up target string
+            let targetvecu81 = keywords1.clone();
+            let target_string1 = String::from_utf8(targetvecu81).unwrap_or_default();
+            let targetvecu82 = keywords2.clone();
+            let target_string2 = String::from_utf8(targetvecu82).unwrap_or_default();
+            let targetvecu83 = keywords3.clone();
+            let target_string3 = String::from_utf8(targetvecu83).unwrap_or_default();
+
+            // for each group ID in the groups: StorageVec<Hash>... 
+            if self.groups.len() > 0 {
+                for i in 0..self.groups.len() {
+                    let groupid = self.groups.get(i).unwrap_or_default();
+                    // make sure the group still exists
+                    if self.group_details.contains(groupid) {
+                        // get the details from group_details: Mapping<Hash, GroupDetails>
+                        let details = self.group_details.get(&groupid).unwrap_or_default();
+                        // if the group is public
+                        if details.hide_from_search == false {
+                            // check the group name and description for a keyword match
+                            let name_string = String::from_utf8(details.group_name.clone()).unwrap_or_default();
+                            let description_string = String::from_utf8(details.description.clone()).unwrap_or_default();
+                            // if the target_string is in the group description or name
+                            if (name_string.contains(&target_string1) || description_string.contains(&target_string1))
+                            && (name_string.contains(&target_string2) || description_string.contains(&target_string2)) 
+                            && (name_string.contains(&target_string3) || description_string.contains(&target_string3)) {
+                                // create the public details
+                                let public_details = GroupPublicDetails {
+                                    group_id: details.group_id,
+                                    group_name: details.group_name.clone(),
+                                    description: details.description.clone(),
+                                    subscribers: details.subscribers,
+                                };
+                                // add it to the results vector
+                                resultsvector.push(public_details);
+                            }
+                        }
+                    }
+
+                }
+            }
+
+            // package the results
+            let results = GroupSearchResults {
+                search: vec![keywords1, keywords2, keywords3],
+                groups: resultsvector,
+            };
+            // return the results
+            results
+        }
+
+
+        // 27 🟢 Get My Open Lists
+        #[ink(message)]
+        pub fn get_my_open_lists(&self) -> Vec<OpenListDetails> {
+            let caller = Self::env().caller();
+            // set up the results vector
+            let mut resultsvector: Vec<OpenListDetails> = Vec::new();
+            // get the caller's account_owned_open_lists: Mapping<AccountID, HashVector>
+            let mylists = self.account_owned_open_lists.get(&caller).unwrap_or_default();
+            // for each list ID, get the details from open_list_details: Mapping<Hash, OpenListDetails>
+            for listid in mylists.hashvector {
+                let details = self.open_list_details.get(&listid).unwrap_or_default();
+                // add the details to the results vector
+                resultsvector.push(details);
+            }
+            // return the results
+            resultsvector
+        }
+
+
+        // 28 🟢 Get My Subscribed Lists
+        #[ink(message)]
+        pub fn get_my_subscribed_lists(&self) -> Vec<OpenListPublicDetails> {
+            let caller = Self::env().caller();
+            // set up the results vector
+            let mut resultsvector: Vec<OpenListPublicDetails> = Vec::new();
+            // get the caller's account_subscribed_lists: Mapping<AccountID, HashVector>
+            let mylists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
+            // for each list ID, get the details from open_list_details: Mapping<Hash, OpenListDetails>
+            for listid in mylists.hashvector {
+                let details = self.open_list_details.get(&listid).unwrap_or_default();
+                // package the public details
+                let public_details = OpenListPublicDetails {
+                    list_id: details.list_id,
+                    owner: details.owner,
+                    list_name: details.list_name.clone(),
+                    description: details.description.clone(),
+                    list_accounts: details.list_accounts,
+                };
+                // add the details to the results vector
+                resultsvector.push(public_details);
+            }
+            // return the results
+            resultsvector
+        }
+
+
+        // 29 🟢 Find Lists By Keyword
+        #[ink(message)]
+        pub fn find_lists_by_keyword(&self, 
+            keywords1: Vec<u8>, 
+            keywords2: Vec<u8>, 
+            keywords3: Vec<u8>) -> ListSearchResults {
+            // set up results structures
+            let mut resultsvector: Vec<OpenListPublicDetails> = Vec::new();
+            // set up target string
+            let targetvecu81 = keywords1.clone();
+            let target_string1 = String::from_utf8(targetvecu81).unwrap_or_default();
+            let targetvecu82 = keywords2.clone();
+            let target_string2 = String::from_utf8(targetvecu82).unwrap_or_default();
+            let targetvecu83 = keywords3.clone();
+            let target_string3 = String::from_utf8(targetvecu83).unwrap_or_default();
+
+            // for each list ID in the open_lists: StorageVec<Hash> ... 
+            if self.open_lists.len() > 0 {
+                for i in 0..self.open_lists.len() {
+                    let listid = self.open_lists.get(i).unwrap_or_default();
+                    // make sure the list exists
+                    if self.open_list_details.contains(listid) {
+                        // get the details from open_list_details: Mapping<Hash, OpenListDetails>
+                        let details = self.open_list_details.get(&listid).unwrap_or_default();
+                        // if the list is public
+                        if details.hide_from_search == false {
+                            // check the list name and description for a keyword match
+                            let name_string = String::from_utf8(details.list_name.clone()).unwrap_or_default();
+                            let description_string = String::from_utf8(details.description.clone()).unwrap_or_default();
+                            // if the target_string is in the list description or name
+                            if (name_string.contains(&target_string1) || description_string.contains(&target_string1))
+                            && (name_string.contains(&target_string2) || description_string.contains(&target_string2)) 
+                            && (name_string.contains(&target_string3) || description_string.contains(&target_string3)) {
+                                // create the public details
+                                let public_details = OpenListPublicDetails {
+                                    list_id: details.list_id,
+                                    owner: details.owner,
+                                    list_name: details.list_name.clone(),
+                                    description: details.description.clone(),
+                                    list_accounts: details.list_accounts,
+                                };
+                                // add it to the results vector
+                                resultsvector.push(public_details);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // package the results
+            let results = ListSearchResults {
+                search: vec![keywords1, keywords2, keywords3],
+                lists: resultsvector,
+            };
+            // return the results
+            results
+        }
+
+
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        // >>>>>>>>>>>>>>>>>>>>>>>>>> SECONDARY GET MESSAGES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+        // 30 🟢 Get Settings Data For Individual Account
+        #[ink(message)]
+        pub fn get_account_settings_data(&self, get_settings_for: AccountId) -> Settings {
+            // get the specific account's settings
+            let results = self.account_settings.get(&get_settings_for).unwrap_or_default();
+            // return the results
+            results
+        }
+
+        // 31 🟢 Verify an account has set their settings
+        #[ink(message)]
+        pub fn verify_account(&self, verify: AccountId) -> u8 {
+            let mut results: u8 = 0;
+            if self.account_settings.contains(&verify) {
+                results = 1;
+            }
+            // return the results
+            results
+        }
+
+        // 32 🟢 Get My Inbox - LISTS 
+        #[ink(message)]
+        pub fn get_my_inbox_lists(&self) -> MyInboxLists {
+            let caller = Self::env().caller();
+            // set up return structures
+            let mut listsvector: Vec<MessagesFromList> = Vec::new();
+
+            // GET ALL MESSAGES FROM SUBSCRIBED LISTS
+            // for each list ID in account_subscribed_lists: Mapping<AccountID, HashVector>
+            let lists = self.account_subscribed_lists.get(caller).unwrap_or_default();
+            let mut defunct: Vec<Hash> = Vec::new();
+            for listid in lists.hashvector.iter() {
+                // if the list still exists, proceed...
+                if self.open_list_details.contains(listid) {
+                    // get the list name from open_list_details: Mapping<Hash, OpenListDetails>
+                    let name = self.open_list_details.get(&listid).unwrap_or_default().list_name;
+                    let mut listmessages:  Vec<ListMessageDetails> = Vec::new();
+                    // get the message ID vector from sent_messages_to_list: Mapping<Hash, HashVector>
+                    let messagevec = self.sent_messages_to_list.get(&listid).unwrap_or_default();
+                    // get details for each messageID from list_message_details: Mapping<Hash, ListMessageDetails>
+                    for message in messagevec.hashvector {
+                        let details = self.list_message_details.get(&message).unwrap_or_default();
+                        // add it to the vector of messages from this group
+                        listmessages.push(details);
+                    }
+                    let messages_from_list = MessagesFromList {
+                        allowed_list: *listid,
+                        list_name: name,
+                        list_messages: listmessages,
+                    };
+                    // add the MessageFromList to the Vec<MessageFromList>
+                    listsvector.push(messages_from_list);
+                }
+                // if the list no longer exists, add it to this vector...
+                defunct.push(*listid);
+            }
+
+            // package the inbox results
+            let my_inbox = MyInboxLists {
+                lists: listsvector,
+                defunct_lists: defunct,
+            };
+
+            // return the results
+            my_inbox
+        }
+
+        // 33 🟢 Get My Inbox - GROUPS
+        #[ink(message)]
+        pub fn get_my_inbox_groups(&self) -> Vec<MessagesFromList> {
+            let caller = Self::env().caller();
+
+            // set up return structures
+            let mut groupsvector: Vec<MessagesFromList> = Vec::new();
             
             // GET ALL CONVERSATIONS WITH SUBSCRIBED GROUPS
             // for each group ID in account_subscribed_groups: Mapping<AccountID, HashVector>
@@ -1918,574 +2303,126 @@ mod geode_messaging {
                 groupsvector.push(messages_from_list);
             }
 
-            // GET ALL MESSAGES FROM SUBSCRIBED LISTS
-            // for each list ID in account_subscribed_lists: Mapping<AccountID, HashVector>
-            let lists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
-            for listid in lists.hashvector {
-                // get the list name from open_list_details: Mapping<Hash, OpenListDetails>
-                let name = self.open_list_details.get(&listid).unwrap_or_default().list_name;
-                let mut listmessages:  Vec<ListMessageDetails> = Vec::new();
-                // get the message ID vector from sent_messages_to_list: Mapping<Hash, HashVector>
-                let messagevec = self.sent_messages_to_list.get(&listid).unwrap_or_default();
-                // get details for each messageID from list_message_details: Mapping<Hash, ListMessageDetails>
-                for message in messagevec.hashvector {
-                    let details = self.list_message_details.get(&message).unwrap_or_default();
-                    // add it to the vector of messages from this group
-                    listmessages.push(details);
-                }
-                let messages_from_list = MessagesFromList {
-                    allowed_list: listid,
-                    list_name: name,
-                    list_messages: listmessages,
-                };
-                // add the MessageFromList to the Vec<MessageFromList>
-                listsvector.push(messages_from_list);
+            // return the results
+            groupsvector
+        }
+
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        // >>>>>>>>>>>>>>>>>> REWARD PROGRAM MESSAGES >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+        // 🟢 34 Rewards - Set Or Update Reward Root Account [RESTRICTED: ROOT]
+        #[ink(message)]
+        pub fn set_reward_root(&mut self, newroot: AccountId) -> Result<(), Error> {
+            let caller = Self::env().caller();
+            // if the root is already set, send an error
+            if self.reward_root_set != 1 || self.reward_root == caller {
+                // proceed - set the roots and update the storage
+                self.reward_root = newroot;
+                self.reward_root_set = 1;
+            }
+            else {
+                // error PermissionDenied
+                return Err(Error::PermissionDenied)
             }
 
-            // package the inbox results
-            let my_inbox = MyInbox {
-                blocked_accts: myblocked,
-                people: peoplevector,
-                groups: groupsvector,
-                lists: listsvector,
-            };
-
-            // return the results
-            my_inbox
+            Ok(())
         }
 
 
-        // 28 🟢 Get My Paid Inbox
+        // 🟢 35 Rewards - Set/Update Reward Interval and Ammount [RESTRICTED: ROOT]
+        // Reward coin will be given to the account that makes the Xth claim in the system
         #[ink(message)]
-        pub fn get_my_paid_inbox(&self) -> MyPaidInbox {
+        pub fn set_reward(&mut self, on: u8, interval: u128, amount: Balance) -> Result<(), Error> {
             let caller = Self::env().caller();
-            // get the caller's account_blocked_lists: Mapping<AccountID, HashVector>
-            let blocked = self.account_blocked_lists.get(&caller).unwrap_or_default().hashvector;
-            // set up the return structure
-            let mut mypaidmessages: Vec<ListMessageDetails> = Vec::new();
-
-            // get the vector of paid lists that this account is on
-            // from paid_lists_with_account: Mapping<AccountID, HashVector>
-            let paidlists = self.paid_lists_with_account.get(&caller).unwrap_or_default();
-            // for each list, get the message IDs sent to that list
-            // from sent_messages_to_paid_list: Mapping<Hash, HashVector>
-            for listid in paidlists.hashvector {
-                let messagevec = self.sent_messages_to_paid_list.get(&listid).unwrap_or_default();
-                // for each message ID, get the details 
-                // from paid_list_message_details: Mapping<Hash, ListMessageDetails>
-                for message in messagevec.hashvector {
-                    let details = self.paid_list_message_details.get(&message).unwrap_or_default();
-                    // add the details to the mypaidmessages vector
-                    mypaidmessages.push(details);
-                }
-                // loop through the rest of the lists
+            if self.reward_root == caller {
+                // proceed to set the reward program paramteters
+                self.reward_on = on;
+                self.reward_interval = interval;
+                self.reward_amount = amount;
             }
-
-            // package the inbox results
-            let my_paid_inbox = MyPaidInbox {
-                blocked_lists: blocked,
-                messages: mypaidmessages,
-            };
-
-            // return the results
-            my_paid_inbox
-        }
-
-
-        // 29 🟢 Get My Allowed And Blocked Accounts
-        #[ink(message)]
-        pub fn get_my_allowed_and_blocked_accounts(&self) -> AccountsAllowedAndBlocked {
-            let caller = Self::env().caller();
-            let allowed = self.account_allowed.get(&caller).unwrap_or_default().accountvector;
-            let blocked = self.account_blocked_accounts.get(&caller).unwrap_or_default().accountvector;
-
-            // package the results
-            let accounts = AccountsAllowedAndBlocked {
-                allowed_accounts: allowed,
-                blocked_accounts: blocked,
-            };
-            // return the results
-            accounts
-        }
-
-
-        // 30 🟢 Get My Groups
-        #[ink(message)]
-        pub fn get_my_groups(&self) -> Vec<GroupDetails> {
-            let caller = Self::env().caller();
-            let mut mygroups: Vec<GroupDetails> = Vec::new();
-            // get the vector of group ID this caller subscbribes to
-            // from account_subscribed_groups: Mapping<AccountID, HashVector>
-            let groupidvec = self.account_subscribed_groups.get(&caller).unwrap_or_default().hashvector;
-            // for each groupid, get the details from group_details: Mapping<Hash, GroupDetails>
-            for groupid in groupidvec {
-                let details = self.group_details.get(&groupid).unwrap_or_default();
-                mygroups.push(details);
-            }
-            // return the results
-            mygroups
-        }
-
-
-        // 31 🟢 Search Inbox By Keyword
-        #[ink(message)]
-        pub fn search_inbox_by_keyword(&self, keywords: Vec<u8>) -> InboxSearchResults {
-            let caller = Self::env().caller();
-            // set up results structures
-            let mut peoplevector: Vec<MessageDetails> = Vec::new();
-            let mut groupsvector: Vec<ListMessageDetails> = Vec::new();
-            let mut listsvector: Vec<ListMessageDetails> = Vec::new();
-            let targetvecu8 = keywords.clone();
-            let target_string = String::from_utf8(targetvecu8).unwrap_or_default();
-
-            // call for MyInbox and check messages for a match along the way...
-
-            // GET ALL CONVERSATIONS WITH INDIVIDUAL ALLOWED ACCOUNTS
-            // for every account in account_allowed: Mapping<AccountID, AccountVector>
-            let allowed = self.account_allowed.get(&caller).unwrap_or_default();
-            for acct in allowed.accountvector {
-                let acct_username = self.account_settings.get(&acct).unwrap_or_default().username;
-                // get all the message IDs from caller to that account
-                let messagevec1 = self.sent_messages_to_account.get((&caller, &acct)).unwrap_or_default();
-                for message in messagevec1.hashvector {
-                    // get the message details for each message ID 
-                    let details = self.message_details.get(&message).unwrap_or_default();
-                    // check to see if the keywords are in the message
-                    let message_string = String::from_utf8(details.message.clone()).unwrap_or_default();
-                    let username_string = String::from_utf8(acct_username.clone()).unwrap_or_default();
-                    let url_string = String::from_utf8(details.file_url.clone()).unwrap_or_default();
-                    // if the target_string is in the message_string
-                    if message_string.contains(&target_string) || username_string.contains(&target_string) || 
-                    url_string.contains(&target_string) {
-                        // add it to the results vector
-                        peoplevector.push(details);
-                    }
-                }
-                // and get all the message IDs from that account to the caller
-                let messagevec2 = self.sent_messages_to_account.get((&acct, &caller)).unwrap_or_default();
-                for message in messagevec2.hashvector {
-                    // get the message details for each message ID 
-                    let details = self.message_details.get(&message).unwrap_or_default();
-                    // check to see if the keywords are in the message
-                    let message_string = String::from_utf8(details.message.clone()).unwrap_or_default();
-                    let username_string = String::from_utf8(details.from_username.clone()).unwrap_or_default();
-                    let url_string = String::from_utf8(details.file_url.clone()).unwrap_or_default();
-                    // if the target_string is in the message_string
-                    if message_string.contains(&target_string) || username_string.contains(&target_string) || 
-                    url_string.contains(&target_string) {
-                        // add it to the results vector
-                        peoplevector.push(details);
-                    }
-                }
+            else {
+                // error PermissionDenied
+                return Err(Error::PermissionDenied)
             }
             
-            // GET ALL CONVERSATIONS WITH SUBSCRIBED GROUPS
-            // for each group ID in account_subscribed_groups: Mapping<AccountID, HashVector>
-            let groups = self.account_subscribed_groups.get(&caller).unwrap_or_default();
-            for groupid in groups.hashvector {
-                // get the message ID vector from all_messages_to_group: Mapping<Hash, HashVector>
-                let messagevec = self.all_messages_to_group.get(&groupid).unwrap_or_default();
-                // get the message details for each message ID
-                for message in messagevec.hashvector {
-                    let details = self.group_message_details.get(&message).unwrap_or_default();
-                    // check to see if the keywords are in the message
-                    let message_string = String::from_utf8(details.message.clone()).unwrap_or_default();
-                    let username_string = String::from_utf8(details.username.clone()).unwrap_or_default();
-                    let url_string = String::from_utf8(details.file_url.clone()).unwrap_or_default();
-                    let list_string = String::from_utf8(details.to_list_name.clone()).unwrap_or_default();
-                    // if the target_string is in the message_string
-                    if message_string.contains(&target_string) || username_string.contains(&target_string) || 
-                    url_string.contains(&target_string) || list_string.contains(&target_string) {
-                        // add it to the results vector
-                        groupsvector.push(details);
-                    }
-                }
-            }
-
-            // GET ALL MESSAGES FROM SUBSCRIBED LISTS
-            // for each list ID in account_subscribed_lists: Mapping<AccountID, HashVector>
-            let lists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
-            for listid in lists.hashvector {
-                // get the message ID vector from sent_messages_to_list: Mapping<Hash, HashVector>
-                let messagevec = self.sent_messages_to_list.get(&listid).unwrap_or_default();
-                // get details for each messageID from list_message_details: Mapping<Hash, ListMessageDetails>
-                for message in messagevec.hashvector {
-                    let details = self.list_message_details.get(&message).unwrap_or_default();
-                    // check to see if the keywords are in the message
-                    let message_string = String::from_utf8(details.message.clone()).unwrap_or_default();
-                    let username_string = String::from_utf8(details.username.clone()).unwrap_or_default();
-                    let url_string = String::from_utf8(details.file_url.clone()).unwrap_or_default();
-                    let list_string = String::from_utf8(details.to_list_name.clone()).unwrap_or_default();
-                    // if the target_string is in the message_string
-                    if message_string.contains(&target_string) || username_string.contains(&target_string) || 
-                    url_string.contains(&target_string) || list_string.contains(&target_string) {
-                        // add it to the results vector
-                        listsvector.push(details);
-                    }
-                }
-            }
-
-            // package the results
-            let results = InboxSearchResults {
-                search: keywords,
-                private_messages: peoplevector,
-                group_messages: groupsvector,
-                list_messages: listsvector,
-            };
-            // return the results
-            results
+            Ok(())
         }
 
-        
-        // 32 🟢 Search Inbox By Account
-        #[ink(message)]
-        pub fn search_inbox_by_account(&self, find_account: AccountId) -> InboxAcctSearchResults {
+        // 🟢 36 ADD COIN TO REWARD ACCOUNT [RESTRICTED: ROOT]
+        #[ink(message, payable)]
+        pub fn add_reward_balance(&mut self) -> Result<(), Error> {
             let caller = Self::env().caller();
-            // set up results structures
-            let mut peoplevector: Vec<MessageDetails> = Vec::new();
-            let mut groupsvector: Vec<ListMessageDetails> = Vec::new();
-            let mut listsvector: Vec<ListMessageDetails> = Vec::new();
-            let acct_username = self.account_settings.get(&find_account).unwrap_or_default().username;
-
-            // GET ALL CONVERSATIONS WITH THAT ACCOUNT 
-            // get all the message IDs from caller to that account
-            let messagevec1 = self.sent_messages_to_account.get((&caller, &find_account)).unwrap_or_default();
-            for message in messagevec1.hashvector {
-                // get the message details for each message ID 
-                let details = self.message_details.get(&message).unwrap_or_default();
-                // add it to the results vector
-                peoplevector.push(details); 
+            if self.reward_root == caller {
+                // add the paid in value to the reward_balance
+                let staked: Balance = self.env().transferred_value();
+                let newbalance: Balance = self.reward_balance.saturating_add(staked);
+                self.reward_balance = newbalance;
             }
-            // and get all the message IDs from that account to the caller
-            let messagevec2 = self.sent_messages_to_account.get((&find_account, &caller)).unwrap_or_default();
-            for message in messagevec2.hashvector {
-                // get the message details for each message ID 
-                let details = self.message_details.get(&message).unwrap_or_default();
-                // add it to the results vector
-                peoplevector.push(details);
+            else {
+                // error PermissionDenied
+                return Err(Error::PermissionDenied)
             }
             
-            // GET ALL CONVERSATIONS WITH SUBSCRIBED GROUPS
-            // for each group ID in account_subscribed_groups: Mapping<AccountID, HashVector>
-            let groups = self.account_subscribed_groups.get(&caller).unwrap_or_default();
-            for groupid in groups.hashvector {
-                // get the message ID vector from all_messages_to_group: Mapping<Hash, HashVector>
-                let messagevec = self.all_messages_to_group.get(&groupid).unwrap_or_default();
-                // get the message details for each message ID
-                for message in messagevec.hashvector {
-                    let details = self.group_message_details.get(&message).unwrap_or_default();
-                    // if find_account sent this message, add it to the results vector
-                    if details.from_acct == find_account {
-                        // add it to the results vector
-                        groupsvector.push(details);
+            Ok(())
+        }
+
+
+        // 🟢 37 RETREIVE COIN FROM REWARD ACCOUNT [RESTRICTED: ROOT]
+        // turns reward program off and returns funds to the root
+        #[ink(message)]
+        pub fn shut_down_reward(&mut self) -> Result<(), Error> {
+            let caller = Self::env().caller();
+            if self.reward_root == caller {
+                // set the reward program to off
+                self.reward_on = 0;
+                // refund the coin to the reward root
+                // Check that there is a nonzero balance on the contract > existential deposit
+                if self.env().balance() > 10 && self.reward_balance > 0 {
+                    // pay the root the reward_balance minus 10
+                    let payout: Balance = self.reward_balance.saturating_sub(10);
+                    if self.env().transfer(caller, payout).is_err() {
+                        return Err(Error::PayoutFailed);
                     }
                 }
-            }
-
-            // GET ALL MESSAGES FROM SUBSCRIBED LISTS OWNED BY THAT FIND_ACCOUNT
-            // for each list ID in account_subscribed_lists: Mapping<AccountID, HashVector>
-            let lists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
-            for listid in lists.hashvector {
-                // get the owner of that list from open_list_details: Mapping<Hash, OpenListDetails>
-                let listowner = self.open_list_details.get(&listid).unwrap_or_default().owner;
-                if listowner == find_account {
-                    // get the message ID vector from sent_messages_to_list: Mapping<Hash, HashVector>
-                    let messagevec = self.sent_messages_to_list.get(&listid).unwrap_or_default();
-                    // get details for each messageID from list_message_details: Mapping<Hash, ListMessageDetails>
-                    for message in messagevec.hashvector {
-                        let details = self.list_message_details.get(&message).unwrap_or_default();
-                        // add it to the results vector
-                        listsvector.push(details);
-                    }
+                // if the balance is < 10, Error (ZeroBalance)
+                else {
+                    return Err(Error::ZeroBalance);
                 }
             }
-
-            // package the results
-            let results = InboxAcctSearchResults {
-                search: find_account,
-                username: acct_username,
-                private_messages: peoplevector,
-                group_messages: groupsvector,
-                list_messages: listsvector,
-            };
-            // return the results
-            results
-        }
-
-
-        // 33 🟢 Find Groups By Keyword
-        #[ink(message)]
-        pub fn find_groups_by_keyword(&self, keywords: Vec<u8>) -> GroupSearchResults {
-            // set up results structures
-            let mut resultsvector: Vec<GroupPublicDetails> = Vec::new();
-            // set up target string
-            let targetvecu8 = keywords.clone();
-            let target_string = String::from_utf8(targetvecu8).unwrap_or_default();
-
-            // for each group ID in the groups: Vec<Hash>... 
-            for groupid in &self.groups {
-                // get the details from group_details: Mapping<Hash, GroupDetails>
-                let details = self.group_details.get(&groupid).unwrap_or_default();
-                // if the group is public
-                if details.hide_from_search == false {
-                    // check the group name and description for a keyword match
-                    let name_string = String::from_utf8(details.group_name.clone()).unwrap_or_default();
-                    let description_string = String::from_utf8(details.description.clone()).unwrap_or_default();
-                    // if the target_string is in the group description or name
-                    if name_string.contains(&target_string) || description_string.contains(&target_string) {
-                        // create the public details
-                        let public_details = GroupPublicDetails {
-                            group_id: details.group_id,
-                            group_name: details.group_name.clone(),
-                            description: details.description.clone(),
-                        };
-                        // add it to the results vector
-                        resultsvector.push(public_details);
-                    }
-                }
+            else {
+                // error PermissionDenied
+                return Err(Error::PermissionDenied)
             }
-            // package the results
-            let results = GroupSearchResults {
-                search: keywords,
-                groups: resultsvector,
-            };
-            // return the results
-            results
+            
+            Ok(())
         }
 
 
-        // 34 🟢 Get My Open Lists
+        // 🟢 38 GET CURRENT REWARD BALANCE AND SETTINGS [RESTRICTED: ROOT]
         #[ink(message)]
-        pub fn get_my_open_lists(&self) -> Vec<OpenListDetails> {
+        pub fn get_reward_settings(&self) -> RewardSettings {
             let caller = Self::env().caller();
-            // set up the results vector
-            let mut resultsvector: Vec<OpenListDetails> = Vec::new();
-            // get the caller's account_owned_open_lists: Mapping<AccountID, HashVector>
-            let mylists = self.account_owned_open_lists.get(&caller).unwrap_or_default();
-            // for each list ID, get the details from open_list_details: Mapping<Hash, OpenListDetails>
-            for listid in mylists.hashvector {
-                let details = self.open_list_details.get(&listid).unwrap_or_default();
-                // add the details to the results vector
-                resultsvector.push(details);
-            }
-            // return the results
-            resultsvector
-        }
-
-
-        // 35 🟢 Get My Paid Lists
-        #[ink(message)]
-        pub fn get_my_paid_lists(&self) -> Vec<PaidListDetails> {
-            let caller = Self::env().caller();
-            // set up the results vector
-            let mut resultsvector: Vec<PaidListDetails> = Vec::new();
-            // get the caller's account_owned_paid_lists: Mapping<AccountID, HashVector>
-            let mylists = self.account_owned_paid_lists.get(&caller).unwrap_or_default();
-            // for each list ID, get the details from paid_list_details: Mapping<Hash, PaidListDetails
-            for listid in mylists.hashvector {
-                let details = self.paid_list_details.get(&listid).unwrap_or_default();
-                // add the details to the results vector
-                resultsvector.push(details);
-            }
-            // return the results
-            resultsvector
-        }
-
-
-        // 36 🟢 Get My Subscribed Lists
-        #[ink(message)]
-        pub fn get_my_subscribed_lists(&self) -> Vec<OpenListPublicDetails> {
-            let caller = Self::env().caller();
-            // set up the results vector
-            let mut resultsvector: Vec<OpenListPublicDetails> = Vec::new();
-            // get the caller's account_subscribed_lists: Mapping<AccountID, HashVector>
-            let mylists = self.account_subscribed_lists.get(&caller).unwrap_or_default();
-            // for each list ID, get the details from open_list_details: Mapping<Hash, OpenListDetails>
-            for listid in mylists.hashvector {
-                let details = self.open_list_details.get(&listid).unwrap_or_default();
-                // package the public details
-                let public_details = OpenListPublicDetails {
-                    list_id: details.list_id,
-                    owner: details.owner,
-                    list_name: details.list_name.clone(),
-                    description: details.description.clone(),
+            let mut results = RewardSettings::default();
+            if self.reward_root == caller {
+                let settings = RewardSettings {
+                    reward_on: self.reward_on,
+                    reward_root_set: self.reward_root_set,
+                    reward_root: self.reward_root,
+                    reward_interval: self.reward_interval,
+                    reward_amount: self.reward_amount,
+                    reward_balance: self.reward_balance,
+                    reward_payouts: self.reward_payouts,
+                    claim_counter: self.claim_counter,
                 };
-                // add the details to the results vector
-                resultsvector.push(public_details);
+                results = settings;
             }
-            // return the results
-            resultsvector
-        }
 
-
-        // 37 🟢 Find Lists By Keyword
-        #[ink(message)]
-        pub fn find_lists_by_keyword(&self, keywords: Vec<u8>) -> ListSearchResults {
-            // set up results structures
-            let mut resultsvector: Vec<OpenListPublicDetails> = Vec::new();
-            // set up target string
-            let targetvecu8 = keywords.clone();
-            let target_string = String::from_utf8(targetvecu8).unwrap_or_default();
-
-            // for each list ID in the open_lists: Vec<Hash> ... 
-            for listid in &self.open_lists {
-                // get the details from open_list_details: Mapping<Hash, OpenListDetails>
-                let details = self.open_list_details.get(&listid).unwrap_or_default();
-                // if the list is public
-                if details.hide_from_search == false {
-                    // check the list name and description for a keyword match
-                    let name_string = String::from_utf8(details.list_name.clone()).unwrap_or_default();
-                    let description_string = String::from_utf8(details.description.clone()).unwrap_or_default();
-                    // if the target_string is in the list description or name
-                    if name_string.contains(&target_string) || description_string.contains(&target_string) {
-                        // create the public details
-                        let public_details = OpenListPublicDetails {
-                            list_id: details.list_id,
-                            owner: details.owner,
-                            list_name: details.list_name.clone(),
-                            description: details.description.clone(),
-                        };
-                        // add it to the results vector
-                        resultsvector.push(public_details);
-                    }
-                }
-            }
-            // package the results
-            let results = ListSearchResults {
-                search: keywords,
-                lists: resultsvector,
-            };
-            // return the results
             results
         }
 
 
-        // 38 🟢 Find Accounts By Keyword
-        // Useful for making paid lists. Returns all settings details.
-        // Front end might allow the user to select a set of accounts, tell them the 
-        // total fee (currently) and let them copy a comma separated list of the account IDs
-        // so they can make a new list easily
-        #[ink(message)]
-        pub fn find_accounts_by_keyword(&self, keywords: Vec<u8>) -> AccountSearchResults {
-            // set up results structures
-            let mut resultsvector: Vec<Settings> = Vec::new();
-            // set up target string
-            let targetvecu8 = keywords.clone();
-            let target_string = String::from_utf8(targetvecu8).unwrap_or_default();
-            // iterate on all_accounts_with_settings: Vec<AccountId>
-            for acct in &self.all_accounts_with_settings {
-                // get their settings in account_settings: Mapping<AccountID, Settings>
-                let settings = self.account_settings.get(&acct).unwrap_or_default();
-                // if they are not hidden from search...
-                if settings.hide_from_search == false {
-                    // check the interests for a keyword match
-                    let interests_string = String::from_utf8(settings.interests.clone()).unwrap_or_default();
-                    let username_string = String::from_utf8(settings.username.clone()).unwrap_or_default();
-                    // if the target_string is in the list description or name
-                    if interests_string.contains(&target_string) || username_string.contains(&target_string) {
-                        // add it to the results vector
-                        resultsvector.push(settings);
-                    }
-                }
-            }
-            // package the results
-            let results = AccountSearchResults {
-                search: keywords,
-                accounts: resultsvector,
-            };
-            // return the results
-            results
-        }
-  
-  
-        // 39 🟢 Get Settings Data For Analysis
-        // returns all of the settings data for analysis, fully anonymized,
-        // but only for accounts who are not hidden from search
-        #[ink(message)]
-        pub fn get_settings_data(&self) -> SettingsData {
-            // set up results structures 
-            let mut interests_data: Vec<Vec<u8>> = Vec::new();
-            let mut fee_data: Vec<Balance> = Vec::new();
-            let mut settings_update_data: Vec<u64> = Vec::new();
-
-            // iterate on all_accounts_with_settings: Vec<AccountId>
-            for acct in &self.all_accounts_with_settings {
-                // get their settings in account_settings: Mapping<AccountID, Settings>
-                let settings = self.account_settings.get(&acct).unwrap_or_default();
-                // if they are not hidden from search...
-                if settings.hide_from_search == false {
-                    // add the anonymous parts to the results vectors
-                    interests_data.push(settings.interests);
-                    fee_data.push(settings.inbox_fee);
-                    settings_update_data.push(settings.last_update);
-                }
-            }
-            // package the results
-            let results = SettingsData {
-                interests: interests_data,
-                inbox_fee: fee_data,
-                last_update:settings_update_data,
-            };
-            // return the results
-            results
-        }
-
-
-        // 40 🛑 Get Settings Data For Individual Caller
-        // returns all of the settings data for analysis, fully anonymized,
-        // but only for accounts who are not hidden from search
-        // and returns the settings data for the particular caller
-        #[ink(message)]
-        pub fn get_settings_data_caller(&self) -> CallerSettingsData {
-            let caller = Self::env().caller();
-
-            // set up results structures 
-            let mut interests_data: Vec<Vec<u8>> = Vec::new();
-            let mut fee_data: Vec<Balance> = Vec::new();
-            let mut settings_update_data: Vec<u64> = Vec::new();
-
-            // iterate on all_accounts_with_settings: Vec<AccountId>
-            for acct in &self.all_accounts_with_settings {
-                // get their settings in account_settings: Mapping<AccountID, Settings>
-                let settings = self.account_settings.get(&acct).unwrap_or_default();
-                // if they are not hidden from search...
-                if settings.hide_from_search == false {
-                    // add the anonymous parts to the results vectors
-                    interests_data.push(settings.interests);
-                    fee_data.push(settings.inbox_fee);
-                    settings_update_data.push(settings.last_update);
-                }
-            }
-
-            // get the specific caller's settings
-            let caller_settings = self.account_settings.get(&caller).unwrap_or_default();
-            let caller_interests_data = caller_settings.interests;
-            let caller_inbox_fee_data = caller_settings.inbox_fee;
-            let caller_last_update_data = caller_settings.last_update;
-            let caller_hide_data = caller_settings.hide_from_search;
-            let caller_username_data = caller_settings.username;
-
-            // package the results
-            let results = CallerSettingsData {
-                caller_interests: caller_interests_data,
-                caller_inbox_fee: caller_inbox_fee_data,
-                caller_last_update: caller_last_update_data,
-                caller_hide: caller_hide_data,
-                caller_username: caller_username_data,
-                interests: interests_data,
-                inbox_fee: fee_data,
-                last_update:settings_update_data,
-            };
-            // return the results
-            results
-        }
-
-
-        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        // >>>>>>>>>>>>>>>>>>>>>>>>>> SECONDARY GET MESSAGES <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
-        // no secondary messages
 
         // END OF MESSAGE LIST
 
