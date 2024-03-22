@@ -1959,44 +1959,21 @@ mod geode_messaging {
 
         // 23 🟢 Get My Paid Inbox 
         #[ink(message)]
-        pub fn get_my_paid_inbox(&mut self) -> Result<Vec<PaidMessageDetails>, Error>  {
+        pub fn get_my_paid_inbox(&self) -> Vec<PaidMessageDetails> {
             let caller = Self::env().caller();
             let mut my_paid_inbox: Vec<PaidMessageDetails> = Vec::new();
-            let mut payment: Balance = 0;
 
             // get the caller's inbox
             let messages = self.account_paid_inbox.get(&caller).unwrap_or_default();
-            
             // for each message in the hash vector, get the PaidMessageDetails and the bid payment
             for ad in messages.hashvector.iter() {
                 let details = self.paid_message_details.get(ad).unwrap_or_default();
-                let bid = details.bid;
                 // add it to the results
                 my_paid_inbox.push(details);
-                payment = payment.saturating_add(bid);
             }
-
-            // pay the caller for picking up their paid inbox
-            if self.env().balance() > payment.saturating_add(11) {
-                if self.env().transfer(caller, payment).is_err() {
-                    return Err(Error::PayoutFailed);
-                }
-            }
-            // if the balance is too low, send error
-            else {
-                return Err(Error::ZeroBalance);
-            }
-
-            // clear the caller's inbox to make room for new paid messages
-            // clear each message details from paid_message_details 
-            for ad in messages.hashvector.iter() {
-                self.paid_message_details.remove(ad);
-            }
-            // clear the inbox itself
-            self.account_paid_inbox.remove(caller);
 
             // return the results
-            Ok(my_paid_inbox)
+            my_paid_inbox
         }
 
 
@@ -2420,6 +2397,45 @@ mod geode_messaging {
             }
 
             results
+        }
+
+        // 39 🟢 PAY AND CLEAR My Paid Inbox 
+        #[ink(message)]
+        pub fn clear_my_paid_inbox(&mut self) -> Result<(), Error>  {
+            let caller = Self::env().caller();
+            // get the caller's inbox
+            let messages = self.account_paid_inbox.get(&caller).unwrap_or_default();
+            let mut payment: Balance = 0;
+            
+            // for each message in the hash vector, get the PaidMessageDetails and the bid payment
+            for ad in messages.hashvector.iter() {
+                let details = self.paid_message_details.get(ad).unwrap_or_default();
+                let bid = details.bid;
+                // add it to the results
+                payment = payment.saturating_add(bid);
+            }
+
+            // pay the caller for picking up their paid inbox
+            if self.env().balance() > payment.saturating_add(11) {
+                if self.env().transfer(caller, payment).is_err() {
+                    return Err(Error::PayoutFailed);
+                }
+            }
+            // if the balance is too low, send error
+            else {
+                return Err(Error::ZeroBalance);
+            }
+
+            // clear the caller's inbox to make room for new paid messages
+            // clear each message details from paid_message_details 
+            for ad in messages.hashvector.iter() {
+                self.paid_message_details.remove(ad);
+            }
+            // clear the inbox itself
+            self.account_paid_inbox.remove(caller);
+
+            // return the results
+            Ok(())
         }
 
 
